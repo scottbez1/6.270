@@ -1,8 +1,5 @@
-//
-// The full "Square Detector" program.
-// It loads several images subsequentally and tries to find squares in
-// each image
-//
+//Fiducial pattern tracker, adapted from the OpenCV square detection demo.
+
 #ifdef _CH_
 #pragma package <opencv>
 #endif
@@ -16,7 +13,7 @@
 #include <string.h>
 
 int threshold = 144;
-int thresh = 50;
+//int thresh = 50;
 IplImage* img = 0;
 CvMemStorage* storage = 0;
 const char* wndname = "6.270 Vision System";
@@ -167,7 +164,7 @@ CvSeq* findSquares4( IplImage* tgray, CvMemStorage* storage )
     return squares;
 }
 
-
+// returns the squared euclidian distance between two points
 double dist_sq(CvPoint* a, CvPoint* b){
     double dx = a->x - b->x;
     double dy = a->y - b->y;
@@ -175,6 +172,7 @@ double dist_sq(CvPoint* a, CvPoint* b){
 }
 
 // the function draws all the squares in the image
+//TODO: refactor to separate robot detection from drawing
 void drawSquares( IplImage* img, IplImage* grayscale, CvSeq* squares )
 {
     CvSeqReader reader;
@@ -195,6 +193,8 @@ void drawSquares( IplImage* img, IplImage* grayscale, CvSeq* squares )
         CV_READ_SEQ_ELEM( pt[2], reader );
         CV_READ_SEQ_ELEM( pt[3], reader );
 
+
+        //calculate the length of each side
         double side_len[4];
         side_len[0] = dist_sq(&pt[0],&pt[1]);
         side_len[1] = dist_sq(&pt[1],&pt[2]);
@@ -206,91 +206,93 @@ void drawSquares( IplImage* img, IplImage* grayscale, CvSeq* squares )
         if (fabs(side_len[0] - side_len[1])/side_len[0] > tolerance ||
             fabs(side_len[0] - side_len[2])/side_len[0] > tolerance ||
             fabs(side_len[0] - side_len[3])/side_len[0] > tolerance) {
-            printf("sides: %f %f %f %f\n", side_len[0], side_len[1], side_len[2], side_len[3]);
+            // at least one of the sides is significantly different than side 0, so skip this square
+            //printf("sides: %f %f %f %f\n", side_len[0], side_len[1], side_len[2], side_len[3]);
             continue;
         }
 
         // draw the square as a closed polyline
         cvPolyLine( cpy, &rect, &count, 1, 1, CV_RGB(0,0,255), 2, CV_AA, 0 );
        
-        if (1){
-            CvPoint corner_pt[4];
-            corner_pt[0].x = (pt[0].x*3+pt[2].x*13)/16;
-            corner_pt[0].y = (pt[0].y*3+pt[2].y*13)/16;
-            corner_pt[1].x = (pt[1].x*3+pt[3].x*13)/16;
-            corner_pt[1].y = (pt[1].y*3+pt[3].y*13)/16;
-            corner_pt[2].x = (pt[2].x*3+pt[0].x*13)/16;
-            corner_pt[2].y = (pt[2].y*3+pt[0].y*13)/16;
-            corner_pt[3].x = (pt[3].x*3+pt[1].x*13)/16;
-            corner_pt[3].y = (pt[3].y*3+pt[1].y*13)/16;
+        CvPoint corner_pt[4];
+        corner_pt[0].x = (pt[0].x*3+pt[2].x*13)/16;
+        corner_pt[0].y = (pt[0].y*3+pt[2].y*13)/16;
+        corner_pt[1].x = (pt[1].x*3+pt[3].x*13)/16;
+        corner_pt[1].y = (pt[1].y*3+pt[3].y*13)/16;
+        corner_pt[2].x = (pt[2].x*3+pt[0].x*13)/16;
+        corner_pt[2].y = (pt[2].y*3+pt[0].y*13)/16;
+        corner_pt[3].x = (pt[3].x*3+pt[1].x*13)/16;
+        corner_pt[3].y = (pt[3].y*3+pt[1].y*13)/16;
 
-            CvSize sz = cvSize( grayscale->width & -2, grayscale->height & -2 );
+        CvSize sz = cvSize( grayscale->width & -2, grayscale->height & -2 );
 
-            CvScalar corner[4];
-            corner[0] = cvGet2D(grayscale, corner_pt[0].y, corner_pt[0].x);
-            corner[1] = cvGet2D(grayscale, corner_pt[1].y, corner_pt[1].x);
-            corner[2] = cvGet2D(grayscale, corner_pt[2].y, corner_pt[2].x);
-            corner[3] = cvGet2D(grayscale, corner_pt[3].y, corner_pt[3].x);
+        CvScalar corner[4];
+        corner[0] = cvGet2D(grayscale, corner_pt[0].y, corner_pt[0].x);
+        corner[1] = cvGet2D(grayscale, corner_pt[1].y, corner_pt[1].x);
+        corner[2] = cvGet2D(grayscale, corner_pt[2].y, corner_pt[2].x);
+        corner[3] = cvGet2D(grayscale, corner_pt[3].y, corner_pt[3].x);
 
-            int best_corner = 0;
-            int j;
-            for (j=1; j<4; j++){
-              if(corner[best_corner].val[0] < corner[j].val[0]){
-                best_corner = j;
-              }
-            }
-
-            CvPoint center = cvPoint((pt[0].x + pt[1].x + pt[2].x + pt[3].x)/4,(pt[0].y + pt[1].y + pt[2].y + pt[3].y)/4);
-
-            //corner_idx is used to map corner indices in relation to the registration corner to absolute corner indices
-            //e.g. if corner_pt[3] is the registration corner, then corner_idx[0]=3, corner_idx[1]=0, corner_idx[2]=1, etc
-
-            int corner_idx[4];
-            corner_idx[0]=(0+best_corner)%4;
-            corner_idx[1]=(1+best_corner)%4;
-            corner_idx[2]=(2+best_corner)%4;
-            corner_idx[3]=(3+best_corner)%4;
-            //TODO: check assumption that corners are in a consistent order, e.g. clockwise
-
-            //make sure the other 3 corners are dark, otherwise ignore this square
-            if (cvGet2D(grayscale, corner_pt[corner_idx[1]].y, corner_pt[corner_idx[1]].x).val[0] > threshold ||
-                cvGet2D(grayscale, corner_pt[corner_idx[2]].y, corner_pt[corner_idx[2]].x).val[0] > threshold ||
-                cvGet2D(grayscale, corner_pt[corner_idx[3]].y, corner_pt[corner_idx[3]].x).val[0] > threshold){
-                //continue;
-            }
-
-
-            CvPoint bit_pt[4];
-            bit_pt[0].x = (pt[corner_idx[0]].x*3+pt[corner_idx[2]].x*5)/8;
-            bit_pt[0].y = (pt[corner_idx[0]].y*3+pt[corner_idx[2]].y*5)/8;
-            bit_pt[2].x = (pt[corner_idx[1]].x*3+pt[corner_idx[3]].x*5)/8;
-            bit_pt[2].y = (pt[corner_idx[1]].y*3+pt[corner_idx[3]].y*5)/8;
-            bit_pt[3].x = (pt[corner_idx[2]].x*3+pt[corner_idx[0]].x*5)/8;
-            bit_pt[3].y = (pt[corner_idx[2]].y*3+pt[corner_idx[0]].y*5)/8;
-            bit_pt[1].x = (pt[corner_idx[3]].x*3+pt[corner_idx[1]].x*5)/8;
-            bit_pt[1].y = (pt[corner_idx[3]].y*3+pt[corner_idx[1]].y*5)/8;
-
-
-            cvCircle(cpy, bit_pt[0], 3, CV_RGB(255,0,0),-1,8,0);
-            cvCircle(cpy, bit_pt[1], 3, CV_RGB(0,255,0),-1,8,0);
-            cvCircle(cpy, bit_pt[2], 3, CV_RGB(0,0,255),-1,8,0);
-            cvCircle(cpy, bit_pt[3], 3, CV_RGB(255,0,255),-1,8,0);
-
-            int id =    ((cvGet2D(img, bit_pt[0].y, bit_pt[0].x).val[0] >= threshold) << 3) +
-                        ((cvGet2D(img, bit_pt[1].y, bit_pt[1].x).val[0] >= threshold) << 2) +
-                        ((cvGet2D(img, bit_pt[2].y, bit_pt[2].x).val[0] >= threshold) << 1) +
-                        ((cvGet2D(img, bit_pt[3].y, bit_pt[3].x).val[0] >= threshold) << 0);
-            printf("Found robot %i\n", id);
-
-            char buffer[20];
-            sprintf(buffer,"Robot %i",id);
-            cvPutText(cpy, buffer, cvPoint(center.x-20, center.y+50), &font, cvScalar(255,255,0,0));
-            //printf("best corner=%i (%i,%i): %f\n", best_corner, corner_pt[best_corner].x, corner_pt[best_corner].y,corner[best_corner].val[0]);   
-            printf("Square 0 at: %i,%i\n", (pt[0].x+pt[1].x+pt[2].x+pt[3].x)/4, (pt[0].y+pt[1].y+pt[2].y+pt[3].y)/4);
-            //printf("corners: %f,%f,%f,%f\n", corner[0].val[0], corner[1].val[0], corner[2].val[0], corner[3].val[0]);
-            cvCircle(cpy, corner_pt[best_corner], 6, CV_RGB(255,0,0),-1,8,0);
+        int best_corner = 0;
+        int j;
+        for (j=1; j<4; j++){
+          if(corner[best_corner].val[0] < corner[j].val[0]){
+            best_corner = j;
+          }
         }
 
+        CvPoint center = cvPoint((pt[0].x + pt[1].x + pt[2].x + pt[3].x)/4,(pt[0].y + pt[1].y + pt[2].y + pt[3].y)/4);
+
+        //corner_idx is used to map corner indices in relation to the registration corner to absolute corner indices
+        //e.g. if corner_pt[3] is the registration corner, then corner_idx[0]=3, corner_idx[1]=0, corner_idx[2]=1, etc
+
+        int corner_idx[4];
+        corner_idx[0]=(0+best_corner)%4;
+        corner_idx[1]=(1+best_corner)%4;
+        corner_idx[2]=(2+best_corner)%4;
+        corner_idx[3]=(3+best_corner)%4;
+        //TODO: check assumption that corners are in a consistent order, e.g. clockwise
+
+        //make sure the other 3 corners are dark, otherwise ignore this square
+        if (cvGet2D(grayscale, corner_pt[corner_idx[1]].y, corner_pt[corner_idx[1]].x).val[0] > threshold ||
+            cvGet2D(grayscale, corner_pt[corner_idx[2]].y, corner_pt[corner_idx[2]].x).val[0] > threshold ||
+            cvGet2D(grayscale, corner_pt[corner_idx[3]].y, corner_pt[corner_idx[3]].x).val[0] > threshold){
+            //continue;
+        }
+
+
+        CvPoint bit_pt[4];
+        bit_pt[0].x = (pt[corner_idx[0]].x*3+pt[corner_idx[2]].x*5)/8;
+        bit_pt[0].y = (pt[corner_idx[0]].y*3+pt[corner_idx[2]].y*5)/8;
+        bit_pt[2].x = (pt[corner_idx[1]].x*3+pt[corner_idx[3]].x*5)/8;
+        bit_pt[2].y = (pt[corner_idx[1]].y*3+pt[corner_idx[3]].y*5)/8;
+        bit_pt[3].x = (pt[corner_idx[2]].x*3+pt[corner_idx[0]].x*5)/8;
+        bit_pt[3].y = (pt[corner_idx[2]].y*3+pt[corner_idx[0]].y*5)/8;
+        bit_pt[1].x = (pt[corner_idx[3]].x*3+pt[corner_idx[1]].x*5)/8;
+        bit_pt[1].y = (pt[corner_idx[3]].y*3+pt[corner_idx[1]].y*5)/8;
+
+
+        cvCircle(cpy, bit_pt[0], 3, CV_RGB(255,0,0),-1,8,0);
+        cvCircle(cpy, bit_pt[1], 3, CV_RGB(0,255,0),-1,8,0);
+        cvCircle(cpy, bit_pt[2], 3, CV_RGB(0,0,255),-1,8,0);
+        cvCircle(cpy, bit_pt[3], 3, CV_RGB(255,0,255),-1,8,0);
+
+        int id =    ((cvGet2D(img, bit_pt[0].y, bit_pt[0].x).val[0] >= threshold) << 3) +
+                    ((cvGet2D(img, bit_pt[1].y, bit_pt[1].x).val[0] >= threshold) << 2) +
+                    ((cvGet2D(img, bit_pt[2].y, bit_pt[2].x).val[0] >= threshold) << 1) +
+                    ((cvGet2D(img, bit_pt[3].y, bit_pt[3].x).val[0] >= threshold) << 0);
+        //printf("Found robot %i\n", id);
+
+        //Show the robot's ID next to it
+        char buffer[20];
+        sprintf(buffer,"Robot %i",id);
+        cvPutText(cpy, buffer, cvPoint(center.x-20, center.y+50), &font, cvScalar(255,255,0,0));
+        
+        
+        //printf("Square 0 at: %i,%i\n", (pt[0].x+pt[1].x+pt[2].x+pt[3].x)/4, (pt[0].y+pt[1].y+pt[2].y+pt[3].y)/4);
+        
+        //make a dot in the registration corner
+        cvCircle(cpy, corner_pt[best_corner], 6, CV_RGB(255,0,0),-1,8,0);
+        
     }
 
     // show the resultant image
@@ -347,9 +349,8 @@ int main(int argc, char** argv)
 
         cvReleaseImage( &grayscale );
 
-        // wait for key.
         // Also the function cvWaitKey takes care of event processing
-        c = cvWaitKey(10);
+        c = cvWaitKey(5);
         // release both images
         cvReleaseImage( &img );
         // clear memory storage - reset free space position

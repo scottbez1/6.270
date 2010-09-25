@@ -1,6 +1,7 @@
 Detects fiducial patterns (available in /vision/resources).
 
-Requires OpenCV to be installed.  See http://opencv.willowgarage.com/wiki/InstallGuide%20%3A%20Debian for details on building OpenCV for Ubuntu/Debian.
+Requires OpenCV to be installed.  See http://opencv.willowgarage.com/wiki/InstallGuide%20%3A%20Debian for details on building OpenCV for Ubuntu/Debian.  Those instructions are slightly out of date, so you'll have to change some of the package names to get them to install correctly.  After running "make install" I also had to run "export LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH" to get it to work, your mileage may vary.
+
 
 Compile this by running "make"
 

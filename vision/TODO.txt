@@ -1,0 +1,5 @@
+5 pixel averaging for bit checks
+simultaneous +/- threshold to help track moving targets
+anti-corner-darkening mask to correct for uneven lighting
+Projection from image coords to real coords
+Serial output

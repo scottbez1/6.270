@@ -31,8 +31,8 @@
 
 #define CV_NO_BACKWARD_COMPATIBILITY
 
-#include "cv.h"
-#include "highgui.h"
+#include <cv.h>
+#include <highgui.h>
 #include <stdio.h>
 #include <math.h>
 #include <string.h>

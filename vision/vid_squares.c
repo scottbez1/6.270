@@ -37,6 +37,10 @@
 #include <math.h>
 #include <string.h>
 
+#include <fcntl.h>
+#include <termios.h>
+#include <unistd.h>
+
 int threshold = 144;
 //int thresh = 50;
 IplImage* img = 0;
@@ -51,6 +55,7 @@ int side_tolerance = 60;
 
 int show_filtered = 1;
 
+const char *device = "/dev/ttyUSB0";
 
 CvFont font;
 
@@ -78,8 +83,8 @@ IplImage* filter_image( IplImage* img ){
     cvSetImageROI( timg, cvRect( 0, 0, sz.width, sz.height ));
 
     // down-scale and upscale the image to filter out the noise
-    cvPyrDown( timg, pyr, 7 );
-    cvPyrUp( pyr, timg, 7 );
+    //cvPyrDown( timg, pyr, 7 );
+    //cvPyrUp( pyr, timg, 7 );
     tgray = cvCreateImage( sz, 8, 1 );
 
     cvCvtColor(timg, tgray, CV_BGR2GRAY);
@@ -325,8 +330,79 @@ void drawSquares( IplImage* img, IplImage* grayscale, CvSeq* squares )
     cvReleaseImage( &cpy );
 }
 
+
+int fd;
+
+
+void openSerial(){
+    fd = open(device, O_RDWR | O_NOCTTY | O_NDELAY);
+    if(fd == -1) {
+        printf( "failed to open port\n" );
+    }
+
+    struct termios  config;
+    if(!isatty(fd)) { printf("error: not a tty!"); }
+    if(tcgetattr(fd, &config) < 0) { printf("error: couldn't get attr"); }
+    //
+    // Input flags - Turn off input processing
+    // convert break to null byte, no CR to NL translation,
+    // no NL to CR translation, don't mark parity errors or breaks
+    // no input parity check, don't strip high bit off,
+    // no XON/XOFF software flow control
+    //
+    config.c_iflag &= ~(IGNBRK | BRKINT | ICRNL |
+                        INLCR | PARMRK | INPCK | ISTRIP | IXON);
+    //
+    // Output flags - Turn off output processing
+    // no CR to NL translation, no NL to CR-NL translation,
+    // no NL to CR translation, no column 0 CR suppression,
+    // no Ctrl-D suppression, no fill characters, no case mapping,
+    // no local output processing
+    //
+    // config.c_oflag &= ~(OCRNL | ONLCR | ONLRET |
+    //                     ONOCR | ONOEOT| OFILL | OLCUC | OPOST);
+    config.c_oflag = 0;
+    //
+    // No line processing:
+    // echo off, echo newline off, canonical mode off, 
+    // extended input processing off, signal chars off
+    //
+    config.c_lflag &= ~(ECHO | ECHONL | ICANON | IEXTEN | ISIG);
+    //
+    // Turn off character processing
+    // clear current char size mask, no parity checking,
+    // no output processing, force 8 bit input
+    //
+    config.c_cflag &= ~(CSIZE | PARENB);
+    config.c_cflag |= CS8;
+    //
+    // One input byte is enough to return from read()
+    // Inter-character timer off
+    //
+    config.c_cc[VMIN]  = 1;
+    config.c_cc[VTIME] = 0;
+    //
+    // Communication speed (simple version, using the predefined
+    // constants)
+    //
+    if(cfsetispeed(&config, B19200) < 0 || cfsetospeed(&config, B19200) < 0) {
+         printf("error: couldn't set baud!\n");
+    }
+    //
+    // Finally, apply the configuration
+    //
+    if(tcsetattr(fd, TCSAFLUSH, &config) < 0) { printf("error: couldn't set serial attrs\n"); }
+
+    write(fd,"A",1);
+}
+
+void closeSerial(){
+    close(fd);
+}
+
 int main(int argc, char** argv)
 {
+    openSerial();
     cvInitFont(&font, CV_FONT_HERSHEY_SIMPLEX, 0.5, 0.5, 0, 2, CV_AA);
     int i, c;
     // create memory storage that will contain all the dynamic data
@@ -385,6 +461,8 @@ int main(int argc, char** argv)
     }
 
     cvDestroyWindow( wndname );
+
+    closeSerial();
 
     return 0;
 }

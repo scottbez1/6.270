@@ -10,4 +10,4 @@ endif
 
 
 all:
-	$(cc) -Wall serial.c vid_squares.c -o vid_squares -I $(location)/include/opencv/ -L$(location)/lib -lm -lcv -lcxcore -lhighgui -lcvaux
+	$(cc) -Wall projection.c serial.c vid_squares.c -o vision -I $(location)/include/opencv/ -L$(location)/lib -lm -lcv -lcxcore -lhighgui -lcvaux

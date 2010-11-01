@@ -37,6 +37,7 @@
 #include <math.h>
 #include <string.h>
 #include "serial.h"
+#include "projection.h"
 
 int threshold = 144;
 //int thresh = 50;
@@ -404,6 +405,11 @@ void drawSquares( IplImage* img, IplImage* grayscale, CvSeq* squares )
             */
         }
 
+        if ((projection != NULL) && id == 9){
+            CvPoint c = project(fiducial_center(robots[id]));
+            printf("X: %i\nY: %i\n", c.x, c.y);
+        }
+
         //printf("X: %i\nY: %i\n T: %f rad\n", robots[9].x,robots[9].y, robots[9].thetaRad);
 
         //printf("Square 0 at: %i,%i\n", (pt[0].x+pt[1].x+pt[2].x+pt[3].x)/4, (pt[0].y+pt[1].y+pt[2].y+pt[3].y)/4);
@@ -461,6 +467,21 @@ int main(int argc, char** argv)
     cvCreateTrackbar( TRK_THRESHOLD, WND_CONTROLS, &threshold, 255, NULL);
     cvCreateTrackbar( TRK_TOLERANCE, WND_CONTROLS, &side_tolerance, 300, NULL);
 
+    printf("To initialize coordinate projection, place fiducial markers in corners: \n\
+_____________________________\n\
+|###                     ###|\n\
+|#0#                     #1#|\n\
+|###                     ###|\n\
+|                           |\n\
+|                           |\n\
+|                           |\n\
+|                           |\n\
+|                           |\n\
+|###                     ###|\n\
+|#3#                     #2#|\n\
+|###                     ###|\n\
+|---------------------------|\n\
+and then press <i>. \n\n");
 
     while(1){
            IplImage* frame = 0;
@@ -489,9 +510,18 @@ int main(int argc, char** argv)
         cvReleaseImage( &img );
         // clear memory storage - reset free space position
         cvClearMemStorage( storage );
-        if( (char)c == 27 )
+        if( (char)c == 27 ){
             break;
+        } else if ( (char) c == 'i' ){
+            projection_init(fiducial_center(robots[0]),
+                            fiducial_center(robots[1]),
+                            fiducial_center(robots[2]),
+                            fiducial_center(robots[3]));
+        }
     }
+
+    if (projection)
+        projection_destroy();
 
     cvDestroyWindow( wndname );
 

@@ -49,7 +49,12 @@ const char* wndname = "6.270 Vision System";
 #define WND_CONTROLS "Controls"
 #define TRK_THRESHOLD "Threshold"
 #define TRK_TOLERANCE "Side length tolerance"
+#define TRK_MIN_AREA "Min square area"
+#define TRK_MAX_AREA "Max square area"
 int side_tolerance = 60;
+
+int min_area = 1000;
+int max_area = 8000;
 
 int show_filtered = 1;
 
@@ -179,8 +184,8 @@ CvSeq* findSquares4( IplImage* tgray, CvMemStorage* storage )
                 // area may be positive or negative - in accordance with the
                 // contour orientation
                 if( result->total == 4 &&
-                    cvContourArea(result,CV_WHOLE_SEQ,0) > 1000 &&
-                    cvContourArea(result,CV_WHOLE_SEQ,0) < 8000 &&
+                    cvContourArea(result,CV_WHOLE_SEQ,0) > min_area &&
+                    cvContourArea(result,CV_WHOLE_SEQ,0) < max_area &&
                     cvCheckContourConvexity(result) )
                 {
                     s = 0;
@@ -466,6 +471,8 @@ int main(int argc, char** argv)
     cvNamedWindow( WND_FILTERED, CV_WINDOW_AUTOSIZE);
     cvCreateTrackbar( TRK_THRESHOLD, WND_CONTROLS, &threshold, 255, NULL);
     cvCreateTrackbar( TRK_TOLERANCE, WND_CONTROLS, &side_tolerance, 300, NULL);
+    cvCreateTrackbar( TRK_MIN_AREA, WND_CONTROLS, &min_area, 10000, NULL);
+    cvCreateTrackbar( TRK_MAX_AREA, WND_CONTROLS, &max_area, 10000, NULL);
 
     printf("To initialize coordinate projection, place fiducial markers in corners: \n\
 _____________________________\n\

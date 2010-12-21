@@ -8,6 +8,7 @@
 #define Y_MAX 3072
 
 void projection_init(CvPoint tl, CvPoint tr, CvPoint br, CvPoint bl){
+    printf("project init\n");
     if (projection != NULL){
         cvReleaseMat(&projection);
     }

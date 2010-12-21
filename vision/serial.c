@@ -1,5 +1,6 @@
 #include "serial.h"
 #include <stdio.h>
+#include <sys/ioctl.h>
 #include <fcntl.h>
 #include <termios.h> 
 #include <unistd.h>
@@ -8,6 +9,7 @@ const char *device = "/dev/ttyUSB0";
 
 
 int fd;
+
 
 int serial_open(){
     fd = open(device, O_RDWR | O_NOCTTY | O_NDELAY);
@@ -70,8 +72,27 @@ int serial_open(){
     //
     if(tcsetattr(fd, TCSAFLUSH, &config) < 0) { printf("error: couldn't set serial attrs\n"); }
 
-    write(fd,"A",1);
+    //write(fd,"A",1);
     return 1;
+}
+
+
+void serial_sync(){
+    const int length=32;
+    const int sync_byte=0;
+    uint8_t sync[length];
+    int i;
+    for (i=0; i<length; i++)
+      sync[i] = sync_byte;
+    write(fd, sync, length);
+}
+void serial_send_packet(packet_buffer* packet){
+    printf("send packet: 0x%08lx\n", *((uint32_t*)packet));
+    printf("  size: %u\n", sizeof(packet_buffer));
+    uint8_t len = sizeof(packet_buffer);
+    write(fd, &len, 1);
+    write(fd, packet, sizeof(packet_buffer));
+    usleep(20000);
 }
 
 void serial_send_str(char *msg, int num_bytes){

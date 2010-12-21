@@ -38,6 +38,9 @@
 #include <string.h>
 #include "serial.h"
 #include "projection.h"
+#include <pthread.h>
+
+#define PI 3.14159265
 
 int threshold = 144;
 //int thresh = 50;
@@ -61,6 +64,8 @@ int show_filtered = 1;
 CvFont font;
 
 
+packet_buffer position;
+
 #define COORD_RESOLUTION 4096
 
 typedef struct fiducial {
@@ -70,9 +75,17 @@ typedef struct fiducial {
     CvPoint br;
 } fiducial_t;
 
+typedef struct robot {
+    signed x : 12;
+    signed y : 12;
+    signed theta : 12;
+} robot_t;
+
 
 #define NUM_ROBOTS 16
-fiducial_t robots[NUM_ROBOTS];
+fiducial_t fiducials[NUM_ROBOTS];
+robot_t robots[NUM_ROBOTS];
+
 
 static void fiducial_clear(fiducial_t *f){
     f->tl = cvPoint(0,0);
@@ -265,7 +278,7 @@ void drawSquares( IplImage* img, IplImage* grayscale, CvSeq* squares )
 
     //reset all fiducials
     for (i=0; i < NUM_ROBOTS; i++){
-        fiducial_clear(&robots[i]);
+        fiducial_clear(&fiducials[i]);
     }
 
 
@@ -382,22 +395,16 @@ void drawSquares( IplImage* img, IplImage* grayscale, CvSeq* squares )
         char buffer[20];
         sprintf(buffer,"Robot %i",id);
         cvPutText(cpy, buffer, cvPoint(center.x-20, center.y+50), &font, cvScalar(255,255,0,0));
-        
-        if (id == 9){
-            char buf[] = {'X'};
-            buf[0] = (uint8_t)center.x;
-            serial_send_str(buf, 1);
-        }
-        
-        if (id >= 0 && id < 16){
-            robots[id].tl.x = corner_pt[corner_idx[0]].x;
-            robots[id].tl.y = corner_pt[corner_idx[0]].y;
-            robots[id].tr.x = corner_pt[corner_idx[1]].x;
-            robots[id].tr.y = corner_pt[corner_idx[1]].y;
-            robots[id].br.x = corner_pt[corner_idx[2]].x;
-            robots[id].br.y = corner_pt[corner_idx[2]].y;
-            robots[id].bl.x = corner_pt[corner_idx[3]].x;
-            robots[id].bl.y = corner_pt[corner_idx[3]].y;
+               
+        if (id >= 0 && id < NUM_ROBOTS){
+            fiducials[id].tl.x = corner_pt[corner_idx[0]].x;
+            fiducials[id].tl.y = corner_pt[corner_idx[0]].y;
+            fiducials[id].tr.x = corner_pt[corner_idx[1]].x;
+            fiducials[id].tr.y = corner_pt[corner_idx[1]].y;
+            fiducials[id].br.x = corner_pt[corner_idx[2]].x;
+            fiducials[id].br.y = corner_pt[corner_idx[2]].y;
+            fiducials[id].bl.x = corner_pt[corner_idx[3]].x;
+            fiducials[id].bl.y = corner_pt[corner_idx[3]].y;
            
             /*
             //calculate heading
@@ -406,19 +413,53 @@ void drawSquares( IplImage* img, IplImage* grayscale, CvSeq* squares )
 
             int dx = centerRightX - center.x;
             int dy = centerRightY - center.y;
-            robots[id].thetaRad = atan2(dx, -dy);
+            fiducials[id].thetaRad = atan2(dx, -dy);
             */
         }
 
-        if ((projection != NULL) && id == 9){
-            CvPoint c = project(fiducial_center(robots[id]));
-            printf("X: %i\nY: %i\n", c.x, c.y);
+        if (projection != NULL){
+            CvPoint center = project(fiducial_center(fiducials[id]));
+            
+            //to find the heading, "extend" the left and right edges 4x and take the average endpoint,
+            //  then project this and take the dx and dy in the projected space to find the arctan
+            int extended_left_x = corner_pt[corner_idx[0]].x + (corner_pt[corner_idx[0]].x - corner_pt[corner_idx[3]].x)*4;
+            int extended_left_y = corner_pt[corner_idx[0]].y + (corner_pt[corner_idx[0]].y - corner_pt[corner_idx[3]].y)*4;
+
+            int extended_right_x = corner_pt[corner_idx[1]].x + (corner_pt[corner_idx[1]].x - corner_pt[corner_idx[2]].x)*4;
+            int extended_right_y = corner_pt[corner_idx[1]].y + (corner_pt[corner_idx[1]].y - corner_pt[corner_idx[2]].y)*4;
+
+            int extended_avg_x = (extended_left_x+extended_right_x)/2;
+            int extended_avg_y = (extended_left_y+extended_right_y)/2;
+
+            cvCircle(cpy, cvPoint(extended_avg_x,extended_avg_y), 5, CV_RGB(255,255,255),-1,8,0);
+
+            CvPoint projected_extension = project(cvPoint(extended_avg_x*4,extended_avg_y*4));
+
+            float dx = ((float)projected_extension.x-(float)center.x);
+            float dy = ((float)projected_extension.y-(float)center.y);
+
+            float theta = atan2(-dy,dx);
+
+
+            robots[id].x = center.x;
+            robots[id].y = center.y;
+
+            robots[id].theta = theta / PI * 2048; //change theta from +/- PI to +/-2048 (signed 12 bit int)
+
+            if (id == 7){
+                printf("X: %04i, Y: %04i, theta: %04i, theta_act: %f, proj_x:%i, proj_y:%i \n", robots[id].x, robots[id].y, robots[id].theta, theta, projected_extension.x, projected_extension.y);
+            }
+
+            /*
+            position.type = POSITION;
+            position.address = 0xFF;
+            position.payload.coords[0].id = 7;
+            position.payload.coords[0].x = (int16_t)c.x;
+            position.payload.coords[0].y = (int16_t)c.y;
+            serial_send_packet(&position);
+            */
         }
 
-        //printf("X: %i\nY: %i\n T: %f rad\n", robots[9].x,robots[9].y, robots[9].thetaRad);
-
-        //printf("Square 0 at: %i,%i\n", (pt[0].x+pt[1].x+pt[2].x+pt[3].x)/4, (pt[0].y+pt[1].y+pt[2].y+pt[3].y)/4);
-        
         //make a dot in the registration corner
         cvCircle(cpy, corner_pt[best_corner], 6, CV_RGB(255,0,0),-1,8,0);
         
@@ -436,6 +477,8 @@ int main(int argc, char** argv)
     if (!serial_open()){
         fprintf(stderr, "Could not open serial port!\n");
     }
+    serial_sync();
+    
     cvInitFont(&font, CV_FONT_HERSHEY_SIMPLEX, 0.5, 0.5, 0, 2, CV_AA);
     int i, c;
     // create memory storage that will contain all the dynamic data
@@ -520,10 +563,10 @@ and then press <i>. \n\n");
         if( (char)c == 27 ){
             break;
         } else if ( (char) c == 'i' ){
-            projection_init(fiducial_center(robots[0]),
-                            fiducial_center(robots[1]),
-                            fiducial_center(robots[2]),
-                            fiducial_center(robots[3]));
+            projection_init(fiducial_center(fiducials[0]),
+                            fiducial_center(fiducials[1]),
+                            fiducial_center(fiducials[2]),
+                            fiducial_center(fiducials[3]));
         }
     }
 

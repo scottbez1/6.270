@@ -318,14 +318,14 @@ void drawSquares( IplImage* img, IplImage* grayscale, CvSeq* squares )
         cvPolyLine( cpy, &rect, &count, 1, 1, CV_RGB(0,0,255), 2, CV_AA, 0 );
        
         CvPoint corner_pt[4];
-        corner_pt[0].x = (pt[0].x*3+pt[2].x*13)/16;
-        corner_pt[0].y = (pt[0].y*3+pt[2].y*13)/16;
-        corner_pt[1].x = (pt[1].x*3+pt[3].x*13)/16;
-        corner_pt[1].y = (pt[1].y*3+pt[3].y*13)/16;
-        corner_pt[2].x = (pt[2].x*3+pt[0].x*13)/16;
-        corner_pt[2].y = (pt[2].y*3+pt[0].y*13)/16;
-        corner_pt[3].x = (pt[3].x*3+pt[1].x*13)/16;
-        corner_pt[3].y = (pt[3].y*3+pt[1].y*13)/16;
+        corner_pt[0].x = (pt[2].x*3+pt[0].x*13)/16;
+        corner_pt[0].y = (pt[2].y*3+pt[0].y*13)/16;
+        corner_pt[1].x = (pt[3].x*3+pt[1].x*13)/16;
+        corner_pt[1].y = (pt[3].y*3+pt[1].y*13)/16;
+        corner_pt[2].x = (pt[0].x*3+pt[2].x*13)/16;
+        corner_pt[2].y = (pt[0].y*3+pt[2].y*13)/16;
+        corner_pt[3].x = (pt[1].x*3+pt[3].x*13)/16;
+        corner_pt[3].y = (pt[1].y*3+pt[3].y*13)/16;
 
         CvSize sz = cvSize( grayscale->width & -2, grayscale->height & -2 );
 
@@ -354,10 +354,10 @@ void drawSquares( IplImage* img, IplImage* grayscale, CvSeq* squares )
         //e.g. if corner_pt[3] is the registration corner, then corner_idx[0]=3, corner_idx[1]=0, corner_idx[2]=1, etc
 
         int corner_idx[4];
-        corner_idx[0]=(0+best_corner)%4;
-        corner_idx[1]=(1+best_corner)%4;
+        corner_idx[0]=(4+best_corner)%4;
+        corner_idx[1]=(3+best_corner)%4;
         corner_idx[2]=(2+best_corner)%4;
-        corner_idx[3]=(3+best_corner)%4;
+        corner_idx[3]=(1+best_corner)%4;
 
         //make sure the other 3 corners are dark, otherwise ignore this square
         if( get_5pixel_avg(grayscale, corner_pt[corner_idx[1]].x, corner_pt[corner_idx[1]].y) > threshold ||
@@ -371,12 +371,12 @@ void drawSquares( IplImage* img, IplImage* grayscale, CvSeq* squares )
         CvPoint bit_pt[4];
         bit_pt[0].x = (pt[corner_idx[0]].x*3+pt[corner_idx[2]].x*5)/8;
         bit_pt[0].y = (pt[corner_idx[0]].y*3+pt[corner_idx[2]].y*5)/8;
-        bit_pt[2].x = (pt[corner_idx[1]].x*3+pt[corner_idx[3]].x*5)/8;
-        bit_pt[2].y = (pt[corner_idx[1]].y*3+pt[corner_idx[3]].y*5)/8;
+        bit_pt[1].x = (pt[corner_idx[1]].x*3+pt[corner_idx[3]].x*5)/8;
+        bit_pt[1].y = (pt[corner_idx[1]].y*3+pt[corner_idx[3]].y*5)/8;
         bit_pt[3].x = (pt[corner_idx[2]].x*3+pt[corner_idx[0]].x*5)/8;
         bit_pt[3].y = (pt[corner_idx[2]].y*3+pt[corner_idx[0]].y*5)/8;
-        bit_pt[1].x = (pt[corner_idx[3]].x*3+pt[corner_idx[1]].x*5)/8;
-        bit_pt[1].y = (pt[corner_idx[3]].y*3+pt[corner_idx[1]].y*5)/8;
+        bit_pt[2].x = (pt[corner_idx[3]].x*3+pt[corner_idx[1]].x*5)/8;
+        bit_pt[2].y = (pt[corner_idx[3]].y*3+pt[corner_idx[1]].y*5)/8;
 
         //for debugging, draw a dot over each bit location
         cvCircle(cpy, bit_pt[0], 3, CV_RGB(255,0,0),-1,8,0);
@@ -385,10 +385,10 @@ void drawSquares( IplImage* img, IplImage* grayscale, CvSeq* squares )
         cvCircle(cpy, bit_pt[3], 3, CV_RGB(255,0,255),-1,8,0);
 
         //read fiducial bits into "id"
-        int id =    ((get_5pixel_avg(img, bit_pt[0].x, bit_pt[0].y) >= threshold) << 3) +
-                    ((get_5pixel_avg(img, bit_pt[1].x, bit_pt[1].y) >= threshold) << 2) +
-                    ((get_5pixel_avg(img, bit_pt[2].x, bit_pt[2].y) >= threshold) << 1) +
-                    ((get_5pixel_avg(img, bit_pt[3].x, bit_pt[3].y) >= threshold) << 0);
+        int id =    ((get_5pixel_avg(img, bit_pt[3].x, bit_pt[3].y) >= threshold) << 3) +
+                    ((get_5pixel_avg(img, bit_pt[2].x, bit_pt[2].y) >= threshold) << 2) +
+                    ((get_5pixel_avg(img, bit_pt[1].x, bit_pt[1].y) >= threshold) << 1) +
+                    ((get_5pixel_avg(img, bit_pt[0].x, bit_pt[0].y) >= threshold) << 0);
         //printf("Found robot %i\n", id);
 
         //Show the robot's ID next to it
@@ -422,11 +422,11 @@ void drawSquares( IplImage* img, IplImage* grayscale, CvSeq* squares )
             
             //to find the heading, "extend" the left and right edges 4x and take the average endpoint,
             //  then project this and take the dx and dy in the projected space to find the arctan
-            int extended_left_x = corner_pt[corner_idx[0]].x + (corner_pt[corner_idx[0]].x - corner_pt[corner_idx[3]].x)*4;
-            int extended_left_y = corner_pt[corner_idx[0]].y + (corner_pt[corner_idx[0]].y - corner_pt[corner_idx[3]].y)*4;
+            int extended_left_x = fiducials[id].tr.x + (fiducials[id].tr.x - fiducials[id].tl.x)*4;
+            int extended_left_y = fiducials[id].tr.y + (fiducials[id].tr.y - fiducials[id].tl.y)*4;
 
-            int extended_right_x = corner_pt[corner_idx[1]].x + (corner_pt[corner_idx[1]].x - corner_pt[corner_idx[2]].x)*4;
-            int extended_right_y = corner_pt[corner_idx[1]].y + (corner_pt[corner_idx[1]].y - corner_pt[corner_idx[2]].y)*4;
+            int extended_right_x = fiducials[id].br.x + (fiducials[id].br.x - fiducials[id].bl.x)*4;
+            int extended_right_y = fiducials[id].br.y + (fiducials[id].br.y - fiducials[id].bl.y)*4;
 
             int extended_avg_x = (extended_left_x+extended_right_x)/2;
             int extended_avg_y = (extended_left_y+extended_right_y)/2;
@@ -438,7 +438,7 @@ void drawSquares( IplImage* img, IplImage* grayscale, CvSeq* squares )
             float dx = ((float)projected_extension.x-(float)center.x);
             float dy = ((float)projected_extension.y-(float)center.y);
 
-            float theta = atan2(-dy,dx);
+            float theta = atan2(dy,dx);
 
 
             robots[id].x = center.x;
@@ -461,7 +461,7 @@ void drawSquares( IplImage* img, IplImage* grayscale, CvSeq* squares )
         }
 
         //make a dot in the registration corner
-        cvCircle(cpy, corner_pt[best_corner], 6, CV_RGB(255,0,0),-1,8,0);
+        cvCircle(cpy, corner_pt[corner_idx[0]], 6, CV_RGB(255,0,0),-1,8,0);
         
     }
 

@@ -79,6 +79,7 @@ typedef struct robot {
     signed x : 12;
     signed y : 12;
     signed theta : 12;
+    pthread_mutex_t lock;
 } robot_t;
 
 
@@ -405,59 +406,47 @@ void drawSquares( IplImage* img, IplImage* grayscale, CvSeq* squares )
             fiducials[id].br.y = corner_pt[corner_idx[2]].y;
             fiducials[id].bl.x = corner_pt[corner_idx[3]].x;
             fiducials[id].bl.y = corner_pt[corner_idx[3]].y;
-           
-            /*
-            //calculate heading
-            int centerRightX = (corner_pt[corner_idx[2]].x + corner_pt[corner_idx[3]].x)/2;
-            int centerRightY = (corner_pt[corner_idx[2]].y + corner_pt[corner_idx[3]].y)/2;
-
-            int dx = centerRightX - center.x;
-            int dy = centerRightY - center.y;
-            fiducials[id].thetaRad = atan2(dx, -dy);
-            */
         }
 
         if (projection != NULL){
             CvPoint center = project(fiducial_center(fiducials[id]));
             
-            //to find the heading, "extend" the left and right edges 4x and take the average endpoint,
-            //  then project this and take the dx and dy in the projected space to find the arctan
-            int extended_left_x = fiducials[id].tr.x + (fiducials[id].tr.x - fiducials[id].tl.x)*4;
-            int extended_left_y = fiducials[id].tr.y + (fiducials[id].tr.y - fiducials[id].tl.y)*4;
+            //to find the heading, "extend" the top and bottom edges 4x to the right and take 
+            //  the average endpoint, then project this and take the dx and dy in the projected 
+            //  space to find the angle it makes
+            
+            int extended_top_x= fiducials[id].tr.x + (fiducials[id].tr.x - fiducials[id].tl.x)*4;
+            int extended_top_y = fiducials[id].tr.y + (fiducials[id].tr.y - fiducials[id].tl.y)*4;
 
-            int extended_right_x = fiducials[id].br.x + (fiducials[id].br.x - fiducials[id].bl.x)*4;
-            int extended_right_y = fiducials[id].br.y + (fiducials[id].br.y - fiducials[id].bl.y)*4;
+            int extended_bottom_x = fiducials[id].br.x + (fiducials[id].br.x - fiducials[id].bl.x)*4;
+            int extended_bottom_y = fiducials[id].br.y + (fiducials[id].br.y - fiducials[id].bl.y)*4;
 
-            int extended_avg_x = (extended_left_x+extended_right_x)/2;
-            int extended_avg_y = (extended_left_y+extended_right_y)/2;
+            int extended_avg_x = (extended_top_x+extended_bottom_x)/2;
+            int extended_avg_y = (extended_bottom_y+extended_bottom_y)/2;
 
+            //draw a white circle at the extended point
             cvCircle(cpy, cvPoint(extended_avg_x,extended_avg_y), 5, CV_RGB(255,255,255),-1,8,0);
 
+            //project into coordinate space
             CvPoint projected_extension = project(cvPoint(extended_avg_x*4,extended_avg_y*4));
 
+            //find the dx and dy with respect to the fiducial's center point
             float dx = ((float)projected_extension.x-(float)center.x);
             float dy = ((float)projected_extension.y-(float)center.y);
 
             float theta = atan2(dy,dx);
 
-
+            //store robot coordinates
+            pthread_mutex_lock( &robots[id].lock);
             robots[id].x = center.x;
             robots[id].y = center.y;
-
             robots[id].theta = theta / PI * 2048; //change theta from +/- PI to +/-2048 (signed 12 bit int)
+            pthread_mutex_unlock( &robots[id].lock);
 
             if (id == 7){
                 printf("X: %04i, Y: %04i, theta: %04i, theta_act: %f, proj_x:%i, proj_y:%i \n", robots[id].x, robots[id].y, robots[id].theta, theta, projected_extension.x, projected_extension.y);
             }
 
-            /*
-            position.type = POSITION;
-            position.address = 0xFF;
-            position.payload.coords[0].id = 7;
-            position.payload.coords[0].x = (int16_t)c.x;
-            position.payload.coords[0].y = (int16_t)c.y;
-            serial_send_packet(&position);
-            */
         }
 
         //make a dot in the registration corner
@@ -468,6 +457,22 @@ void drawSquares( IplImage* img, IplImage* grayscale, CvSeq* squares )
     // show the resultant image
     cvShowImage( wndname, cpy );
     cvReleaseImage( &cpy );
+}
+
+void* runSerial(void* params){
+    int i;
+    while(1){
+        pthread_mutex_lock( &robots[7].lock );
+            position.type = POSITION;
+            position.address = 0xFF;
+            position.payload.coords[0].id = 7;
+            position.payload.coords[0].x = robots[7].x;
+            position.payload.coords[0].y = robots[7].y;
+            position.payload.coords[0].theta = robots[7].theta;
+            serial_send_packet(&position);
+        pthread_mutex_unlock(&robots[7].lock);
+        usleep(20000);
+    }
 }
 
 
@@ -497,7 +502,12 @@ int main(int argc, char** argv)
         return -1;
     }
 
-    
+
+    //initialize mutexes
+    for (i=0;i<NUM_ROBOTS;i++){
+        pthread_mutex_init(&robots[i].lock, NULL);
+    }
+
     //setup camera properties
     /*
     cvSetCaptureProperty(capture, CV_CAP_PROP_BRIGHTNESS, 0.75);
@@ -532,6 +542,12 @@ _____________________________\n\
 |###                     ###|\n\
 |---------------------------|\n\
 and then press <i>. \n\n");
+
+
+    //start the serial comm thread
+    pthread_t serialThread;
+    pthread_create( &serialThread, NULL, &runSerial, NULL);
+
 
     while(1){
            IplImage* frame = 0;
@@ -569,6 +585,7 @@ and then press <i>. \n\n");
                             fiducial_center(fiducials[3]));
         }
     }
+
 
     if (projection)
         projection_destroy();

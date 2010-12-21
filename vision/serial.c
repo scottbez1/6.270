@@ -87,8 +87,8 @@ void serial_sync(){
     write(fd, sync, length);
 }
 void serial_send_packet(packet_buffer* packet){
-    printf("send packet: 0x%08lx\n", *((uint32_t*)packet));
-    printf("  size: %u\n", sizeof(packet_buffer));
+    //printf("send packet: 0x%08lx\n", *((uint32_t*)packet));
+    //printf("  size: %u\n", sizeof(packet_buffer));
     uint8_t len = sizeof(packet_buffer);
     write(fd, &len, 1);
     write(fd, packet, sizeof(packet_buffer));

@@ -31,6 +31,7 @@
 
 #define CV_NO_BACKWARD_COMPATIBILITY
 
+
 #include <cv.h>
 #include <highgui.h>
 #include <stdio.h>
@@ -42,18 +43,28 @@
 
 #define PI 3.14159265
 
+
+
+#define X_MIN -2048
+#define X_MAX 2047
+
+#define Y_MIN -2048
+#define Y_MAX 2047
+
+
 int threshold = 144;
 //int thresh = 50;
 IplImage* img = 0;
 CvMemStorage* storage = 0;
-const char* wndname = "6.270 Vision System";
+const char* WND_MAIN = "6.270 Vision System";
+const char* WND_FILTERED = "Filtered Video";
+const char* WND_CONTROLS = "Controls";
+const char* TRK_THRESHOLD = "Threshold";
+const char* TRK_TOLERANCE = "Side length tolerance";
+const char* TRK_MIN_AREA = "Min square area";
+const char* TRK_MAX_AREA = "Max square area";
 
-#define WND_FILTERED "Filtered Video"
-#define WND_CONTROLS "Controls"
-#define TRK_THRESHOLD "Threshold"
-#define TRK_TOLERANCE "Side length tolerance"
-#define TRK_MIN_AREA "Min square area"
-#define TRK_MAX_AREA "Max square area"
+
 int side_tolerance = 60;
 
 int min_area = 1000;
@@ -64,9 +75,7 @@ int show_filtered = 1;
 CvFont font;
 
 
-packet_buffer position;
 
-#define COORD_RESOLUTION 4096
 
 typedef struct fiducial {
     CvPoint tl;
@@ -84,8 +93,53 @@ typedef struct robot {
 
 
 #define NUM_ROBOTS 16
-fiducial_t fiducials[NUM_ROBOTS];
 robot_t robots[NUM_ROBOTS];
+
+
+int clamp(int x, int low, int high){
+    return x < low ? low : (x > high ? high : x);
+}
+
+
+CvPoint projectionPoints[4];
+
+#define MOUSE_NA 0
+#define MOUSE_PROJECT_1 1
+#define MOUSE_PROJECT_2 2
+#define MOUSE_PROJECT_3 3
+#define MOUSE_PROJECT_4 4
+
+int mouseState = MOUSE_NA;
+void mouseHandler(int event, int x, int y, int flags, void* param){
+    if (event == CV_EVENT_LBUTTONDOWN){
+        switch(mouseState){
+            case MOUSE_PROJECT_1:
+                projectionPoints[0] = cvPoint(x*4,y*4);
+                mouseState = MOUSE_PROJECT_2;
+                break;
+            case MOUSE_PROJECT_2:
+                projectionPoints[1] = cvPoint(x*4,y*4);
+                mouseState = MOUSE_PROJECT_3;
+                break;
+            case MOUSE_PROJECT_3:
+                projectionPoints[2] = cvPoint(x*4,y*4);
+                mouseState = MOUSE_PROJECT_4;
+                break;
+            case MOUSE_PROJECT_4:
+                projectionPoints[3] = cvPoint(x*4,y*4);
+                mouseState = MOUSE_NA;
+                
+                projection_init(projectionPoints[0],
+                                projectionPoints[1],
+                                projectionPoints[2],
+                                projectionPoints[3],
+                                X_MIN, X_MAX, Y_MIN, Y_MAX);
+                break;
+        }
+    }
+}
+
+
 
 
 static void fiducial_clear(fiducial_t *f){
@@ -142,7 +196,7 @@ IplImage* filter_image( IplImage* img ){
 CvSeq* findSquares4( IplImage* tgray, CvMemStorage* storage )
 {
     CvSeq* contours;
-    int i, c, l, N = 5;//11;
+    int i;
     CvSize sz = cvSize( img->width & -2, img->height & -2 );
     IplImage* gray = cvCreateImage( sz, 8, 1 );
     CvSeq* result;
@@ -151,30 +205,6 @@ CvSeq* findSquares4( IplImage* tgray, CvMemStorage* storage )
     // 4 points per square (the square's vertices)
     CvSeq* squares = cvCreateSeq( 0, sizeof(CvSeq), sizeof(CvPoint), storage );
 
-
-        // try several threshold levels
-        //for( l = 0; l < N; l++ )
-        //{
-            /*
-            // hack: use Canny instead of zero threshold level.
-            // Canny helps to catch squares with gradient shading
-            if( l == 0 )
-            {
-                // apply Canny. Take the upper threshold from slider
-                // and set the lower to 0 (which forces edges merging)
-                cvCanny( tgray, gray, 0, thresh, 5 );
-                // dilate canny output to remove potential
-                // holes between edge segments
-                cvDilate( gray, gray, 0, 1 );
-            }
-            else
-            {
-                // apply threshold if l!=0:
-                //     tgray(x,y) = gray(x,y) < (l+1)*255/N ? 255 : 0
-                cvThreshold( tgray, gray, (l+1)*255/N, 255, CV_THRESH_BINARY );
-            }
-            */
-           
             cvThreshold( tgray, gray, threshold, 255, CV_THRESH_BINARY );
             
             if (show_filtered)
@@ -230,7 +260,6 @@ CvSeq* findSquares4( IplImage* tgray, CvMemStorage* storage )
                 // take the next contour
                 contours = contours->h_next;
             }
-        //}
     // release all the temporary images
     cvReleaseImage( &gray );
     return squares;
@@ -276,12 +305,6 @@ void drawSquares( IplImage* img, IplImage* grayscale, CvSeq* squares )
     CvSeqReader reader;
     IplImage* cpy = cvCloneImage( img );
     int i;
-
-    //reset all fiducials
-    for (i=0; i < NUM_ROBOTS; i++){
-        fiducial_clear(&fiducials[i]);
-    }
-
 
     // initialize reader of the sequence
     cvStartReadSeq( squares, &reader, 0 );
@@ -396,30 +419,33 @@ void drawSquares( IplImage* img, IplImage* grayscale, CvSeq* squares )
         char buffer[20];
         sprintf(buffer,"Robot %i",id);
         cvPutText(cpy, buffer, cvPoint(center.x-20, center.y+50), &font, cvScalar(255,255,0,0));
-               
+      
+
+        fiducial_t fiducial;
+
         if (id >= 0 && id < NUM_ROBOTS){
-            fiducials[id].tl.x = corner_pt[corner_idx[0]].x;
-            fiducials[id].tl.y = corner_pt[corner_idx[0]].y;
-            fiducials[id].tr.x = corner_pt[corner_idx[1]].x;
-            fiducials[id].tr.y = corner_pt[corner_idx[1]].y;
-            fiducials[id].br.x = corner_pt[corner_idx[2]].x;
-            fiducials[id].br.y = corner_pt[corner_idx[2]].y;
-            fiducials[id].bl.x = corner_pt[corner_idx[3]].x;
-            fiducials[id].bl.y = corner_pt[corner_idx[3]].y;
+            fiducial.tl.x = corner_pt[corner_idx[0]].x;
+            fiducial.tl.y = corner_pt[corner_idx[0]].y;
+            fiducial.tr.x = corner_pt[corner_idx[1]].x;
+            fiducial.tr.y = corner_pt[corner_idx[1]].y;
+            fiducial.br.x = corner_pt[corner_idx[2]].x;
+            fiducial.br.y = corner_pt[corner_idx[2]].y;
+            fiducial.bl.x = corner_pt[corner_idx[3]].x;
+            fiducial.bl.y = corner_pt[corner_idx[3]].y;
         }
 
         if (projection != NULL){
-            CvPoint center = project(fiducial_center(fiducials[id]));
+            CvPoint center = project(fiducial_center(fiducial));
             
             //to find the heading, "extend" the top and bottom edges 4x to the right and take 
             //  the average endpoint, then project this and take the dx and dy in the projected 
             //  space to find the angle it makes
             
-            int extended_top_x= fiducials[id].tr.x + (fiducials[id].tr.x - fiducials[id].tl.x)*4;
-            int extended_top_y = fiducials[id].tr.y + (fiducials[id].tr.y - fiducials[id].tl.y)*4;
+            int extended_top_x = fiducial.tr.x + (fiducial.tr.x - fiducial.tl.x)*4;
+            int extended_top_y = fiducial.tr.y + (fiducial.tr.y - fiducial.tl.y)*4;
 
-            int extended_bottom_x = fiducials[id].br.x + (fiducials[id].br.x - fiducials[id].bl.x)*4;
-            int extended_bottom_y = fiducials[id].br.y + (fiducials[id].br.y - fiducials[id].bl.y)*4;
+            int extended_bottom_x = fiducial.br.x + (fiducial.br.x - fiducial.bl.x)*4;
+            int extended_bottom_y = fiducial.br.y + (fiducial.br.y - fiducial.bl.y)*4;
 
             int extended_avg_x = (extended_top_x+extended_bottom_x)/2;
             int extended_avg_y = (extended_bottom_y+extended_bottom_y)/2;
@@ -438,8 +464,8 @@ void drawSquares( IplImage* img, IplImage* grayscale, CvSeq* squares )
 
             //store robot coordinates
             pthread_mutex_lock( &robots[id].lock);
-            robots[id].x = center.x;
-            robots[id].y = center.y;
+            robots[id].x = clamp(center.x, X_MIN, X_MAX);
+            robots[id].y = clamp(center.y, Y_MIN, Y_MAX);
             robots[id].theta = theta / PI * 2048; //change theta from +/- PI to +/-2048 (signed 12 bit int)
             pthread_mutex_unlock( &robots[id].lock);
 
@@ -454,13 +480,30 @@ void drawSquares( IplImage* img, IplImage* grayscale, CvSeq* squares )
         
     }
 
+
+    switch (mouseState) {
+        case MOUSE_PROJECT_1:
+            cvPutText(cpy, "Init Projection: Click the TOP LEFT corner", cvPoint(0, 50), &font, cvScalar(0,255,0,0));
+            break;
+        case MOUSE_PROJECT_2:
+            cvPutText(cpy, "Init Projection: Click the TOP RIGHT corner", cvPoint(0, 50), &font, cvScalar(0,255,0,0));
+            break;
+        case MOUSE_PROJECT_3:
+            cvPutText(cpy, "Init Projection: Click the BOTTOM RIGHT corner", cvPoint(0, 50), &font, cvScalar(0,255,0,0));
+            break;
+        case MOUSE_PROJECT_4:
+            cvPutText(cpy, "Init Projection: Click the BOTTOM LEFT corner", cvPoint(0, 50), &font, cvScalar(0,255,0,0));
+            break;
+    }
+
     // show the resultant image
-    cvShowImage( wndname, cpy );
+    cvShowImage( WND_MAIN, cpy );
     cvReleaseImage( &cpy );
 }
 
 void* runSerial(void* params){
     int i;
+    packet_buffer position;
     while(1){
         pthread_mutex_lock( &robots[7].lock );
             position.type = POSITION;
@@ -474,7 +517,6 @@ void* runSerial(void* params){
         usleep(20000);
     }
 }
-
 
 
 int main(int argc, char** argv)
@@ -519,7 +561,7 @@ int main(int argc, char** argv)
 
     //printf("PROPERTY: %f\n",cvGetCaptureProperty( capture, CV_CAP_PROP_MODE ));
     */
-    cvNamedWindow( wndname, 1 );
+    cvNamedWindow( WND_MAIN, 1 );
     cvNamedWindow( WND_CONTROLS, CV_WINDOW_AUTOSIZE);
     cvNamedWindow( WND_FILTERED, CV_WINDOW_AUTOSIZE);
     cvCreateTrackbar( TRK_THRESHOLD, WND_CONTROLS, &threshold, 255, NULL);
@@ -527,6 +569,10 @@ int main(int argc, char** argv)
     cvCreateTrackbar( TRK_MIN_AREA, WND_CONTROLS, &min_area, 10000, NULL);
     cvCreateTrackbar( TRK_MAX_AREA, WND_CONTROLS, &max_area, 10000, NULL);
 
+    //setup mouse handler
+    cvSetMouseCallback(WND_MAIN,mouseHandler, NULL);
+
+/*
     printf("To initialize coordinate projection, place fiducial markers in corners: \n\
 _____________________________\n\
 |###                     ###|\n\
@@ -542,7 +588,9 @@ _____________________________\n\
 |###                     ###|\n\
 |---------------------------|\n\
 and then press <i>. \n\n");
+*/
 
+    printf("To initialize coordinate projection, press <i>\n");
 
     //start the serial comm thread
     pthread_t serialThread;
@@ -576,13 +624,16 @@ and then press <i>. \n\n");
         cvReleaseImage( &img );
         // clear memory storage - reset free space position
         cvClearMemStorage( storage );
-        if( (char)c == 27 ){
+        if( (char)c == 27 ){  //ESC
             break;
         } else if ( (char) c == 'i' ){
+            mouseState = MOUSE_PROJECT_1;
+            /*
             projection_init(fiducial_center(fiducials[0]),
                             fiducial_center(fiducials[1]),
                             fiducial_center(fiducials[2]),
                             fiducial_center(fiducials[3]));
+            */
         }
     }
 
@@ -590,7 +641,7 @@ and then press <i>. \n\n");
     if (projection)
         projection_destroy();
 
-    cvDestroyWindow( wndname );
+    cvDestroyWindow( WND_MAIN);
 
     serial_close();
 

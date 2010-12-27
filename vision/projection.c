@@ -4,10 +4,9 @@
 
 //See http://stackoverflow.com/questions/169902/projective-transformation/2551747#2551747
 
-#define X_MAX 4096
-#define Y_MAX 3072
 
-void projection_init(CvPoint tl, CvPoint tr, CvPoint br, CvPoint bl){
+
+void projection_init(CvPoint tl, CvPoint tr, CvPoint br, CvPoint bl, const int X_MIN, const int X_MAX, const int Y_MIN, const int Y_MAX){
     printf("project init\n");
     if (projection != NULL){
         cvReleaseMat(&projection);
@@ -15,10 +14,10 @@ void projection_init(CvPoint tl, CvPoint tr, CvPoint br, CvPoint bl){
 
     projection = cvCreateMat(2,4,CV_64F);
 
-    double d[] = {     0, Y_MAX,
-                X_MAX, Y_MAX,
-                X_MAX,     0,
-                    0,     0};
+    double d[] = {  X_MIN, Y_MAX,
+                    X_MAX, Y_MAX,
+                    X_MAX, Y_MIN,
+                    X_MIN, Y_MIN};
     CvMat destination = cvMat(4,2,CV_64F,d);
 
 

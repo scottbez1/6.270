@@ -44,7 +44,7 @@
 #define PI 3.14159265
 
 
-
+//size of space to project onto
 #define X_MIN -2048
 #define X_MAX 2047
 
@@ -52,8 +52,8 @@
 #define Y_MAX 2047
 
 
-int threshold = 144;
-//int thresh = 50;
+int threshold = 100;
+
 IplImage* img = 0;
 CvMemStorage* storage = 0;
 const char* WND_MAIN = "6.270 Vision System";
@@ -66,12 +66,10 @@ const char* TRK_MAX_AREA = "Max square area";
 const char* TRK_ROBOT_A_ID = "Robot A id";
 const char* TRK_ROBOT_B_ID = "Robot B id";
 
-int side_tolerance = 60;
+int side_tolerance = 20;
 
-int min_area = 1000;
-int max_area = 8000;
-
-int show_filtered = 1;
+int min_area = 500;
+int max_area = 2000;
 
 CvFont font;
 
@@ -206,8 +204,7 @@ CvSeq* findSquares4( IplImage* tgray, CvMemStorage* storage )
 
             cvThreshold( tgray, gray, threshold, 255, CV_THRESH_BINARY );
             
-            if (show_filtered)
-                cvShowImage( WND_FILTERED, gray );
+            cvShowImage( WND_FILTERED, gray );
 
             // find contours and store them all as a list
             cvFindContours( gray, storage, &contours, sizeof(CvContour),
@@ -350,8 +347,6 @@ void drawSquares( IplImage* img, IplImage* grayscale, CvSeq* squares )
         corner_pt[3].x = (pt[1].x*3+pt[3].x*13)/16;
         corner_pt[3].y = (pt[1].y*3+pt[3].y*13)/16;
 
-        CvSize sz = cvSize( grayscale->width & -2, grayscale->height & -2 );
-
         int corner[4];
         corner[0] = get_5pixel_avg(grayscale, corner_pt[0].x, corner_pt[0].y);
         corner[1] = get_5pixel_avg(grayscale, corner_pt[1].x, corner_pt[1].y);
@@ -368,13 +363,11 @@ void drawSquares( IplImage* img, IplImage* grayscale, CvSeq* squares )
 
         CvPoint center = cvPoint((pt[0].x + pt[1].x + pt[2].x + pt[3].x)/4,(pt[0].y + pt[1].y + pt[2].y + pt[3].y)/4);
 
-        //TODO: implement more accurate center point (avoid rounding error)
-        //CvPoint accurateCenter = cvPoint((pt[0].x + pt[1].x + pt[2].x + pt[3].x)*COORD_RESOLUTION/cpy->width/4,
-        //                                 (pt[0].y + pt[1].y + pt[2].y + pt[3].y)*COORD_RESOLUTION/cpy->height/4);
 
-
-        //corner_idx is used to map corner indices in relation to the registration corner to absolute corner indices
-        //e.g. if corner_pt[3] is the registration corner, then corner_idx[0]=3, corner_idx[1]=0, corner_idx[2]=1, etc
+        //corner_idx is used to map corner indices in relation to the registration 
+        //  corner to absolute corner indices
+        //e.g. if corner_pt[3] is the registration corner, then corner_idx[0]=3, 
+        //  corner_idx[1]=0, corner_idx[2]=1, etc
 
         int corner_idx[4];
         corner_idx[0]=(4+best_corner)%4;
@@ -447,7 +440,7 @@ void drawSquares( IplImage* img, IplImage* grayscale, CvSeq* squares )
             int extended_bottom_y = fiducial.br.y + (fiducial.br.y - fiducial.bl.y)*4;
 
             int extended_avg_x = (extended_top_x+extended_bottom_x)/2;
-            int extended_avg_y = (extended_bottom_y+extended_bottom_y)/2;
+            int extended_avg_y = (extended_top_y+extended_bottom_y)/2;
 
             //draw a white circle at the extended point
             cvCircle(cpy, cvPoint(extended_avg_x,extended_avg_y), 5, CV_RGB(255,255,255),-1,8,0);
@@ -503,6 +496,20 @@ void drawSquares( IplImage* img, IplImage* grayscale, CvSeq* squares )
         case MOUSE_PROJECT_4:
             cvPutText(cpy, "Init Projection: Click the BOTTOM LEFT corner", cvPoint(2, 20), &font, cvScalar(0,255,0,0));
             break;
+        default:
+            i=0; //HACK to get the compiler to not complain about having a "label" for a declaration
+            //draw projection boundary line
+            CvPoint imageProjectionPoints[4];  //scale down the projection points since they're all 4x larger than they are on the image
+            imageProjectionPoints[0] = cvPoint(projectionPoints[0].x/4,projectionPoints[0].y/4);
+            imageProjectionPoints[1] = cvPoint(projectionPoints[1].x/4,projectionPoints[1].y/4);
+            imageProjectionPoints[2] = cvPoint(projectionPoints[2].x/4,projectionPoints[2].y/4);
+            imageProjectionPoints[3] = cvPoint(projectionPoints[3].x/4,projectionPoints[3].y/4);
+            
+            cvLine(cpy, imageProjectionPoints[0], imageProjectionPoints[1], CV_RGB(30,30,200), 2, 8, 0);
+            cvLine(cpy, imageProjectionPoints[1], imageProjectionPoints[2], CV_RGB(30,30,200), 2, 8, 0);
+            cvLine(cpy, imageProjectionPoints[2], imageProjectionPoints[3], CV_RGB(30,30,200), 2, 8, 0);
+            cvLine(cpy, imageProjectionPoints[3], imageProjectionPoints[0], CV_RGB(30,30,200), 2, 8, 0);
+            break;
     }
 
     // show the resultant image
@@ -511,7 +518,6 @@ void drawSquares( IplImage* img, IplImage* grayscale, CvSeq* squares )
 }
 
 void* runSerial(void* params){
-    int i;
     packet_buffer position;
     while(1){
         pthread_mutex_lock( &robot_a.lock );
@@ -546,7 +552,7 @@ int main(int argc, char** argv)
     serial_sync();
     
     cvInitFont(&font, CV_FONT_HERSHEY_SIMPLEX, 0.5, 0.5, 0, 2, CV_AA);
-    int i, c;
+    int c;
     // create memory storage that will contain all the dynamic data
     storage = cvCreateMemStorage(0);
 
@@ -567,6 +573,9 @@ int main(int argc, char** argv)
     //initialize mutexes
     pthread_mutex_init(&robot_a.lock, NULL);
     pthread_mutex_init(&robot_b.lock, NULL);
+
+    robot_a.id=7;
+    robot_b.id=14;
 
     //setup camera properties
     /*

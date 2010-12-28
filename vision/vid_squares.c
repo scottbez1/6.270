@@ -63,7 +63,8 @@ const char* TRK_THRESHOLD = "Threshold";
 const char* TRK_TOLERANCE = "Side length tolerance";
 const char* TRK_MIN_AREA = "Min square area";
 const char* TRK_MAX_AREA = "Max square area";
-
+const char* TRK_ROBOT_A_ID = "Robot A id";
+const char* TRK_ROBOT_B_ID = "Robot B id";
 
 int side_tolerance = 60;
 
@@ -74,9 +75,6 @@ int show_filtered = 1;
 
 CvFont font;
 
-
-
-
 typedef struct fiducial {
     CvPoint tl;
     CvPoint tr;
@@ -85,6 +83,7 @@ typedef struct fiducial {
 } fiducial_t;
 
 typedef struct robot {
+    int id;
     signed x : 12;
     signed y : 12;
     signed theta : 12;
@@ -92,9 +91,9 @@ typedef struct robot {
 } robot_t;
 
 
-#define NUM_ROBOTS 16
-robot_t robots[NUM_ROBOTS];
-
+#define MAX_ROBOT_ID 16
+robot_t robot_a;
+robot_t robot_b;
 
 int clamp(int x, int low, int high){
     return x < low ? low : (x > high ? high : x);
@@ -423,7 +422,7 @@ void drawSquares( IplImage* img, IplImage* grayscale, CvSeq* squares )
 
         fiducial_t fiducial;
 
-        if (id >= 0 && id < NUM_ROBOTS){
+        if (id >= 0 && id < MAX_ROBOT_ID){
             fiducial.tl.x = corner_pt[corner_idx[0]].x;
             fiducial.tl.y = corner_pt[corner_idx[0]].y;
             fiducial.tr.x = corner_pt[corner_idx[1]].x;
@@ -462,15 +461,25 @@ void drawSquares( IplImage* img, IplImage* grayscale, CvSeq* squares )
 
             float theta = atan2(dy,dx);
 
+            robot_t *robot;
+            if (robot_a.id == id){
+                robot = &robot_a;
+            } else if (robot_b.id == id){
+                robot = &robot_b;
+            } else { //not a recognized robot id, ignore it
+                printf("Ignoring detected robot %i\n", id);
+                continue;
+            }
+
             //store robot coordinates
-            pthread_mutex_lock( &robots[id].lock);
-            robots[id].x = clamp(center.x, X_MIN, X_MAX);
-            robots[id].y = clamp(center.y, Y_MIN, Y_MAX);
-            robots[id].theta = theta / PI * 2048; //change theta from +/- PI to +/-2048 (signed 12 bit int)
-            pthread_mutex_unlock( &robots[id].lock);
+            pthread_mutex_lock( &robot->lock);
+            robot->x = clamp(center.x, X_MIN, X_MAX);
+            robot->y = clamp(center.y, Y_MIN, Y_MAX);
+            robot->theta = theta / PI * 2048; //change theta from +/- PI to +/-2048 (signed 12 bit int)
+            pthread_mutex_unlock( &robot->lock);
 
             if (id == 7){
-                printf("X: %04i, Y: %04i, theta: %04i, theta_act: %f, proj_x:%i, proj_y:%i \n", robots[id].x, robots[id].y, robots[id].theta, theta, projected_extension.x, projected_extension.y);
+                printf("X: %04i, Y: %04i, theta: %04i, theta_act: %f, proj_x:%i, proj_y:%i \n", robot->x, robot->y, robot->theta, theta, projected_extension.x, projected_extension.y);
             }
 
         }
@@ -483,16 +492,16 @@ void drawSquares( IplImage* img, IplImage* grayscale, CvSeq* squares )
 
     switch (mouseState) {
         case MOUSE_PROJECT_1:
-            cvPutText(cpy, "Init Projection: Click the TOP LEFT corner", cvPoint(0, 50), &font, cvScalar(0,255,0,0));
+            cvPutText(cpy, "Init Projection: Click the TOP LEFT corner", cvPoint(2, 20), &font, cvScalar(0,255,0,0));
             break;
         case MOUSE_PROJECT_2:
-            cvPutText(cpy, "Init Projection: Click the TOP RIGHT corner", cvPoint(0, 50), &font, cvScalar(0,255,0,0));
+            cvPutText(cpy, "Init Projection: Click the TOP RIGHT corner", cvPoint(2, 20), &font, cvScalar(0,255,0,0));
             break;
         case MOUSE_PROJECT_3:
-            cvPutText(cpy, "Init Projection: Click the BOTTOM RIGHT corner", cvPoint(0, 50), &font, cvScalar(0,255,0,0));
+            cvPutText(cpy, "Init Projection: Click the BOTTOM RIGHT corner", cvPoint(2, 20), &font, cvScalar(0,255,0,0));
             break;
         case MOUSE_PROJECT_4:
-            cvPutText(cpy, "Init Projection: Click the BOTTOM LEFT corner", cvPoint(0, 50), &font, cvScalar(0,255,0,0));
+            cvPutText(cpy, "Init Projection: Click the BOTTOM LEFT corner", cvPoint(2, 20), &font, cvScalar(0,255,0,0));
             break;
     }
 
@@ -505,16 +514,26 @@ void* runSerial(void* params){
     int i;
     packet_buffer position;
     while(1){
-        pthread_mutex_lock( &robots[7].lock );
+        pthread_mutex_lock( &robot_a.lock );
             position.type = POSITION;
             position.address = 0xFF;
-            position.payload.coords[0].id = 7;
-            position.payload.coords[0].x = robots[7].x;
-            position.payload.coords[0].y = robots[7].y;
-            position.payload.coords[0].theta = robots[7].theta;
-            serial_send_packet(&position);
-        pthread_mutex_unlock(&robots[7].lock);
-        usleep(20000);
+            position.payload.coords[0].id = robot_a.id;
+            position.payload.coords[0].x = robot_a.x;
+            position.payload.coords[0].y = robot_a.y;
+            position.payload.coords[0].theta = robot_a.theta;
+        pthread_mutex_unlock(&robot_a.lock);
+        
+        pthread_mutex_lock( &robot_b.lock );
+            position.type = POSITION;
+            position.address = 0xFF;
+            position.payload.coords[1].id = robot_b.id;
+            position.payload.coords[1].x = robot_b.x;
+            position.payload.coords[1].y = robot_b.y;
+            position.payload.coords[1].theta = robot_b.theta;
+        pthread_mutex_unlock(&robot_b.lock);
+            
+        serial_send_packet(&position);
+        //usleep(50000);
     }
 }
 
@@ -546,9 +565,8 @@ int main(int argc, char** argv)
 
 
     //initialize mutexes
-    for (i=0;i<NUM_ROBOTS;i++){
-        pthread_mutex_init(&robots[i].lock, NULL);
-    }
+    pthread_mutex_init(&robot_a.lock, NULL);
+    pthread_mutex_init(&robot_b.lock, NULL);
 
     //setup camera properties
     /*
@@ -568,6 +586,8 @@ int main(int argc, char** argv)
     cvCreateTrackbar( TRK_TOLERANCE, WND_CONTROLS, &side_tolerance, 300, NULL);
     cvCreateTrackbar( TRK_MIN_AREA, WND_CONTROLS, &min_area, 10000, NULL);
     cvCreateTrackbar( TRK_MAX_AREA, WND_CONTROLS, &max_area, 10000, NULL);
+    cvCreateTrackbar( TRK_ROBOT_A_ID, WND_CONTROLS, &robot_a.id, MAX_ROBOT_ID-1, NULL);
+    cvCreateTrackbar( TRK_ROBOT_B_ID, WND_CONTROLS, &robot_b.id, MAX_ROBOT_ID-1, NULL);
 
     //setup mouse handler
     cvSetMouseCallback(WND_MAIN,mouseHandler, NULL);

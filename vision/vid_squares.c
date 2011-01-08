@@ -384,27 +384,42 @@ void drawSquares( IplImage* img, IplImage* grayscale, CvSeq* squares )
 
 
         //calculate the coordinates of each bit
-        CvPoint bit_pt[4];
-        bit_pt[0].x = (pt[corner_idx[0]].x*3+pt[corner_idx[2]].x*5)/8;
-        bit_pt[0].y = (pt[corner_idx[0]].y*3+pt[corner_idx[2]].y*5)/8;
-        bit_pt[1].x = (pt[corner_idx[1]].x*3+pt[corner_idx[3]].x*5)/8;
-        bit_pt[1].y = (pt[corner_idx[1]].y*3+pt[corner_idx[3]].y*5)/8;
-        bit_pt[3].x = (pt[corner_idx[2]].x*3+pt[corner_idx[0]].x*5)/8;
-        bit_pt[3].y = (pt[corner_idx[2]].y*3+pt[corner_idx[0]].y*5)/8;
-        bit_pt[2].x = (pt[corner_idx[3]].x*3+pt[corner_idx[1]].x*5)/8;
-        bit_pt[2].y = (pt[corner_idx[3]].y*3+pt[corner_idx[1]].y*5)/8;
+        CvPoint bit_pt[12];
+        CvPoint origin, step_x, step_y;
+        bit_pt[0].x = (pt[corner_idx[3]].x*3+pt[corner_idx[1]].x*5)/8;
+        bit_pt[0].y = (pt[corner_idx[3]].y*3+pt[corner_idx[1]].y*5)/8;
+        bit_pt[1].x = (pt[corner_idx[2]].x*3+pt[corner_idx[0]].x*5)/8;
+        bit_pt[1].y = (pt[corner_idx[2]].y*3+pt[corner_idx[0]].y*5)/8;
+        bit_pt[2].x = (pt[corner_idx[1]].x*3+pt[corner_idx[3]].x*5)/8;
+        bit_pt[2].y = (pt[corner_idx[1]].y*3+pt[corner_idx[3]].y*5)/8;
+        bit_pt[3].x = (pt[corner_idx[0]].x*3+pt[corner_idx[2]].x*5)/8;
+        bit_pt[3].y = (pt[corner_idx[0]].y*3+pt[corner_idx[2]].y*5)/8;
 
-        //for debugging, draw a dot over each bit location
-        cvCircle(cpy, bit_pt[0], 3, CV_RGB(255,0,0),-1,8,0);
-        cvCircle(cpy, bit_pt[1], 3, CV_RGB(0,255,0),-1,8,0);
-        cvCircle(cpy, bit_pt[2], 3, CV_RGB(0,0,255),-1,8,0);
-        cvCircle(cpy, bit_pt[3], 3, CV_RGB(255,0,255),-1,8,0);
+        step_x.x = bit_pt[1].x - bit_pt[0].x;
+        step_x.y = bit_pt[1].y - bit_pt[0].y;
 
-        //read fiducial bits into "id"
-        int id =    ((get_5pixel_avg(img, bit_pt[3].x, bit_pt[3].y) >= threshold) << 3) +
-                    ((get_5pixel_avg(img, bit_pt[2].x, bit_pt[2].y) >= threshold) << 2) +
-                    ((get_5pixel_avg(img, bit_pt[1].x, bit_pt[1].y) >= threshold) << 1) +
-                    ((get_5pixel_avg(img, bit_pt[0].x, bit_pt[0].y) >= threshold) << 0);
+        step_y.x = bit_pt[2].x - bit_pt[0].x;
+        step_y.y = bit_pt[2].y - bit_pt[0].y;
+
+        origin.x = bit_pt[0].x - step_x.x - step_y.x;
+        origin.y = bit_pt[0].y - step_x.y - step_y.y;
+
+        int offset_x[12] = {1,2,1,2,1,2,0,3,0,3,1,2};
+        int offset_y[12] = {1,1,2,2,0,0,1,1,2,2,3,3};
+        int color[3][12] = {{128,0,0},{255,0,0},{0,128,0},{128,128,0},{255,128,0},{0,255,0},
+                            {128,255,0},{255,255,0},{0,0,128},{128,0,128},{255,0,128},{0,128,128}};
+
+        int bit, id=0;
+        for (j=0; j<12; j++) {
+            bit_pt[j].x = origin.x + offset_x[j]*step_x.x + offset_y[j]*step_y.x;
+            bit_pt[j].y = origin.y + offset_x[j]*step_x.y + offset_y[j]*step_y.y;
+            //for debugging, draw a dot over each bit location
+            cvCircle(cpy, bit_pt[j], 3, CV_RGB(color[j][0],color[j][1],color[j][2]),-1,8,0);
+            bit = (get_5pixel_avg(img, bit_pt[3].x, bit_pt[3].y) >= threshold);
+            //read fiducial bits into "id"
+            id = id | (bit << j);
+        }
+
         //printf("Found robot %i\n", id);
 
         //Show the robot's ID next to it

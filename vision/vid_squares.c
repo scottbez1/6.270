@@ -356,14 +356,22 @@ void drawSquares( IplImage* img, IplImage* grayscale, CvSeq* squares )
         corner[2] = get_5pixel_avg(grayscale, corner_pt[2].x, corner_pt[2].y);
         corner[3] = get_5pixel_avg(grayscale, corner_pt[3].x, corner_pt[3].y);
 
-        int best_corner = 0;
+        int best_corner = -1;
         int j;
-        for (j=1; j<4; j++){
-          if(corner[best_corner] < corner[j]){
+        for (j=0; j<4; j++){
+          if(corner[j] > threshold){
             best_corner = j;
           }
         }
 
+        if (best_corner == -1){
+            continue;
+        }
+
+        //TODO: fix hack:
+        if(corner[0]>threshold && corner[3]>threshold){
+          best_corner = 0;
+        }
         CvPoint center = cvPoint((pt[0].x + pt[1].x + pt[2].x + pt[3].x)/4,(pt[0].y + pt[1].y + pt[2].y + pt[3].y)/4);
 
 
@@ -379,37 +387,35 @@ void drawSquares( IplImage* img, IplImage* grayscale, CvSeq* squares )
         corner_idx[3]=(1+best_corner)%4;
 
         //make sure the other 3 corners are dark, otherwise ignore this square
-        if( get_5pixel_avg(grayscale, corner_pt[corner_idx[1]].x, corner_pt[corner_idx[1]].y) > threshold ||
-            get_5pixel_avg(grayscale, corner_pt[corner_idx[2]].x, corner_pt[corner_idx[2]].y) > threshold ||
-            get_5pixel_avg(grayscale, corner_pt[corner_idx[3]].x, corner_pt[corner_idx[3]].y) > threshold){
+        if( get_5pixel_avg(grayscale, corner_pt[corner_idx[3]].x, corner_pt[corner_idx[3]].y) > threshold ||
+            get_5pixel_avg(grayscale, corner_pt[corner_idx[2]].x, corner_pt[corner_idx[2]].y) > threshold){
             continue;
         }
 
 
         //calculate the coordinates of each bit
-        CvMat *squareProjection;
-        projection_init(squareProjection, pt[corner_idx[0]], pt[corner_idx[1]], pt[corner_idx[2]], pt[corner_idx[3]],
-                        0, 4, 0, 4, 1);
+        CvPoint bit_pt[4];
+        bit_pt[0].x = (pt[corner_idx[0]].x*3+pt[corner_idx[2]].x*5)/8;
+        bit_pt[0].y = (pt[corner_idx[0]].y*3+pt[corner_idx[2]].y*5)/8;
+        bit_pt[1].x = (pt[corner_idx[1]].x*3+pt[corner_idx[3]].x*5)/8;
+        bit_pt[1].y = (pt[corner_idx[1]].y*3+pt[corner_idx[3]].y*5)/8;
+        bit_pt[3].x = (pt[corner_idx[2]].x*3+pt[corner_idx[0]].x*5)/8;
+        bit_pt[3].y = (pt[corner_idx[2]].y*3+pt[corner_idx[0]].y*5)/8;
+        bit_pt[2].x = (pt[corner_idx[3]].x*3+pt[corner_idx[1]].x*5)/8;
+        bit_pt[2].y = (pt[corner_idx[3]].y*3+pt[corner_idx[1]].y*5)/8;
 
-        int offset_x[12] = {1,2,1,2,1,2,0,3,0,3,1,2};
-        int offset_y[12] = {1,1,2,2,0,0,1,1,2,2,3,3};
-        int color[12][3] = {{128,0,0},{255,0,0},{0,128,0},{128,128,0},{255,128,0},{0,255,0},
-                            {128,255,0},{255,255,0},{0,0,128},{128,0,128},{255,0,128},{0,128,128}};
+        //for debugging, draw a dot over each bit location
+        cvCircle(cpy, bit_pt[0], 3, CV_RGB(255,0,0),-1,8,0);
+        cvCircle(cpy, bit_pt[1], 3, CV_RGB(0,255,0),-1,8,0);
+        cvCircle(cpy, bit_pt[2], 3, CV_RGB(0,0,255),-1,8,0);
+        cvCircle(cpy, bit_pt[3], 3, CV_RGB(255,0,255),-1,8,0);
 
-        CvPoint bit_pt;
-        int bit, id=0;
-        for (j=0; j<12; j++) {
-            bit_pt.x = .5 + offset_x[j];
-            bit_pt.y = .5 + offset_y[j];
-            bit_pt = project(squareProjection, bit_pt);
-            //for debugging, draw a dot over each bit location
-            cvCircle(cpy, bit_pt, 3, CV_RGB(color[j][0],color[j][1],color[j][2]),-1,8,0);
-            bit = (get_5pixel_avg(img, bit_pt.x, bit_pt.y) >= threshold);
-            //read fiducial bits into "id"
-            id = id | (bit << j);
-        }
-        projection_destroy(&squareProjection);
-
+        //read fiducial bits into "id"
+        int id =    ((get_5pixel_avg(img, corner_pt[corner_idx[1]].x, corner_pt[corner_idx[1]].y) >= threshold) << 4) +
+                    ((get_5pixel_avg(img, bit_pt[3].x, bit_pt[3].y) >= threshold) << 3) +
+                    ((get_5pixel_avg(img, bit_pt[2].x, bit_pt[2].y) >= threshold) << 2) +
+                    ((get_5pixel_avg(img, bit_pt[1].x, bit_pt[1].y) >= threshold) << 1) +
+                    ((get_5pixel_avg(img, bit_pt[0].x, bit_pt[0].y) >= threshold) << 0);
         //printf("Found robot %i\n", id);
 
         //Show the robot's ID next to it
@@ -675,7 +681,7 @@ and then press <i>. \n\n");
 
 
     if (projection)
-        projection_distroy(&projection);
+        projection_destroy(projection);
 
     cvDestroyWindow( WND_MAIN);
 

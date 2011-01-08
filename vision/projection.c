@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include <cv.h>
 #include <assert.h>
 #include "projection.h"
@@ -73,7 +74,7 @@ CvPoint project(CvMat *projection, CvPoint point){
     return cvPoint(o[0], o[1]);
 }
 
-void projection_destroy(CvMat **projection){
+void projection_destroy(CvMat *projection){
     cvReleaseMat(projection);
 }
 

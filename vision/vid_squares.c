@@ -401,6 +401,7 @@ void drawSquares( IplImage* img, IplImage* grayscale, CvSeq* squares )
 
         origin.x = bit_pt[0].x - step_x.x - step_y.x;
         origin.y = bit_pt[0].y - step_x.y - step_y.y;
+        printf("Origin (%f,%f), step_x (%f,%f), step_y (%f,%f)", origin.x, origin.y, step_x.x, step_x.y, step_y.x, step_y.y);
 
         int offset_x[12] = {1,2,1,2,1,2,0,3,0,3,1,2};
         int offset_y[12] = {1,1,2,2,0,0,1,1,2,2,3,3};
@@ -413,7 +414,7 @@ void drawSquares( IplImage* img, IplImage* grayscale, CvSeq* squares )
             bit_pt[j].y = origin.y + offset_x[j]*step_x.y + offset_y[j]*step_y.y;
             //for debugging, draw a dot over each bit location
             cvCircle(cpy, bit_pt[j], 3, CV_RGB(color[j][0],color[j][1],color[j][2]),-1,8,0);
-            bit = (get_5pixel_avg(img, bit_pt[3].x, bit_pt[3].y) >= threshold);
+            bit = (get_5pixel_avg(img, bit_pt[j].x, bit_pt[j].y) >= threshold);
             //read fiducial bits into "id"
             id = id | (bit << j);
         }

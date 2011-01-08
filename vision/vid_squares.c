@@ -386,14 +386,12 @@ void drawSquares( IplImage* img, IplImage* grayscale, CvSeq* squares )
         //calculate the coordinates of each bit
         CvPoint bit_pt[12];
         CvPoint origin, step_x, step_y;
-        bit_pt[0].x = (pt[corner_idx[3]].x*3+pt[corner_idx[1]].x*5)/8;
-        bit_pt[0].y = (pt[corner_idx[3]].y*3+pt[corner_idx[1]].y*5)/8;
-        bit_pt[1].x = (pt[corner_idx[2]].x*3+pt[corner_idx[0]].x*5)/8;
-        bit_pt[1].y = (pt[corner_idx[2]].y*3+pt[corner_idx[0]].y*5)/8;
+        bit_pt[0].x = (pt[corner_idx[0]].x*5+pt[corner_idx[2]].x*3)/8;
+        bit_pt[0].y = (pt[corner_idx[0]].y*5+pt[corner_idx[2]].y*3)/8;
+        bit_pt[1].x = (pt[corner_idx[1]].x*5+pt[corner_idx[3]].x*3)/8;
+        bit_pt[1].y = (pt[corner_idx[1]].y*5+pt[corner_idx[3]].y*3)/8;
         bit_pt[2].x = (pt[corner_idx[1]].x*3+pt[corner_idx[3]].x*5)/8;
         bit_pt[2].y = (pt[corner_idx[1]].y*3+pt[corner_idx[3]].y*5)/8;
-        bit_pt[3].x = (pt[corner_idx[0]].x*3+pt[corner_idx[2]].x*5)/8;
-        bit_pt[3].y = (pt[corner_idx[0]].y*3+pt[corner_idx[2]].y*5)/8;
 
         step_x.x = bit_pt[1].x - bit_pt[0].x;
         step_x.y = bit_pt[1].y - bit_pt[0].y;

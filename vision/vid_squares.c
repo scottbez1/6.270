@@ -43,7 +43,6 @@
 
 #define PI 3.14159265
 
-
 //size of space to project onto
 #define X_MIN -2048
 #define X_MAX 2047
@@ -98,6 +97,8 @@ int clamp(int x, int low, int high){
 }
 
 
+CvMat *projection;
+
 CvPoint projectionPoints[4];
 
 #define MOUSE_NA 0
@@ -126,11 +127,13 @@ void mouseHandler(int event, int x, int y, int flags, void* param){
                 projectionPoints[3] = cvPoint(x*4,y*4);
                 mouseState = MOUSE_NA;
                 
-                projection_init(projectionPoints[0],
+                projection_init(projection,
+                                projectionPoints[0],
                                 projectionPoints[1],
                                 projectionPoints[2],
                                 projectionPoints[3],
-                                X_MIN, X_MAX, Y_MIN, Y_MAX);
+                                X_MIN, X_MAX, Y_MIN, Y_MAX,
+                                0);
                 break;
         }
     }
@@ -384,39 +387,28 @@ void drawSquares( IplImage* img, IplImage* grayscale, CvSeq* squares )
 
 
         //calculate the coordinates of each bit
-        CvPoint bit_pt[12];
-        CvPoint origin, step_x, step_y;
-        bit_pt[0].x = (pt[corner_idx[0]].x*5+pt[corner_idx[2]].x*3)/8;
-        bit_pt[0].y = (pt[corner_idx[0]].y*5+pt[corner_idx[2]].y*3)/8;
-        bit_pt[1].x = (pt[corner_idx[1]].x*5+pt[corner_idx[3]].x*3)/8;
-        bit_pt[1].y = (pt[corner_idx[1]].y*5+pt[corner_idx[3]].y*3)/8;
-        bit_pt[2].x = (pt[corner_idx[1]].x*3+pt[corner_idx[3]].x*5)/8;
-        bit_pt[2].y = (pt[corner_idx[1]].y*3+pt[corner_idx[3]].y*5)/8;
-
-        step_x.x = bit_pt[1].x - bit_pt[0].x;
-        step_x.y = bit_pt[1].y - bit_pt[0].y;
-
-        step_y.x = bit_pt[2].x - bit_pt[0].x;
-        step_y.y = bit_pt[2].y - bit_pt[0].y;
-
-        origin.x = bit_pt[0].x - step_x.x - step_y.x;
-        origin.y = bit_pt[0].y - step_x.y - step_y.y;
+        CvMat *squareProjection;
+        projection_init(squareProjection, pt[corner_idx[0]], pt[corner_idx[1]], pt[corner_idx[2]], pt[corner_idx[3]],
+                        0, 4, 0, 4, 1);
 
         int offset_x[12] = {1,2,1,2,1,2,0,3,0,3,1,2};
         int offset_y[12] = {1,1,2,2,0,0,1,1,2,2,3,3};
         int color[12][3] = {{128,0,0},{255,0,0},{0,128,0},{128,128,0},{255,128,0},{0,255,0},
                             {128,255,0},{255,255,0},{0,0,128},{128,0,128},{255,0,128},{0,128,128}};
 
+        CvPoint bit_pt;
         int bit, id=0;
         for (j=0; j<12; j++) {
-            bit_pt[j].x = origin.x + offset_x[j]*step_x.x + offset_y[j]*step_y.x;
-            bit_pt[j].y = origin.y + offset_x[j]*step_x.y + offset_y[j]*step_y.y;
+            bit_pt.x = .5 + offset_x[j];
+            bit_pt.y = .5 + offset_y[j];
+            bit_pt = project(squareProjection, bit_pt);
             //for debugging, draw a dot over each bit location
-            cvCircle(cpy, bit_pt[j], 3, CV_RGB(color[j][0],color[j][1],color[j][2]),-1,8,0);
-            bit = (get_5pixel_avg(img, bit_pt[j].x, bit_pt[j].y) >= threshold);
+            cvCircle(cpy, bit_pt, 3, CV_RGB(color[j][0],color[j][1],color[j][2]),-1,8,0);
+            bit = (get_5pixel_avg(img, bit_pt.x, bit_pt.y) >= threshold);
             //read fiducial bits into "id"
             id = id | (bit << j);
         }
+        projection_destroy(&squareProjection);
 
         //printf("Found robot %i\n", id);
 
@@ -440,7 +432,7 @@ void drawSquares( IplImage* img, IplImage* grayscale, CvSeq* squares )
         }
 
         if (projection != NULL){
-            CvPoint center = project(fiducial_center(fiducial));
+            CvPoint center = project(projection, fiducial_center(fiducial));
             
             //to find the heading, "extend" the top and bottom edges 4x to the right and take 
             //  the average endpoint, then project this and take the dx and dy in the projected 
@@ -459,7 +451,7 @@ void drawSquares( IplImage* img, IplImage* grayscale, CvSeq* squares )
             cvCircle(cpy, cvPoint(extended_avg_x,extended_avg_y), 5, CV_RGB(255,255,255),-1,8,0);
 
             //project into coordinate space
-            CvPoint projected_extension = project(cvPoint(extended_avg_x*4,extended_avg_y*4));
+            CvPoint projected_extension = project(projection, cvPoint(extended_avg_x*4,extended_avg_y*4));
 
             //find the dx and dy with respect to the fiducial's center point
             float dx = ((float)projected_extension.x-(float)center.x);
@@ -671,17 +663,19 @@ and then press <i>. \n\n");
         } else if ( (char) c == 'i' ){
             mouseState = MOUSE_PROJECT_1;
             /*
-            projection_init(fiducial_center(fiducials[0]),
+            projection_init(projection,
+                            fiducial_center(fiducials[0]),
                             fiducial_center(fiducials[1]),
                             fiducial_center(fiducials[2]),
-                            fiducial_center(fiducials[3]));
+                            fiducial_center(fiducials[3]),
+                            0);
             */
         }
     }
 
 
     if (projection)
-        projection_destroy();
+        projection_distroy(&projection);
 
     cvDestroyWindow( WND_MAIN);
 

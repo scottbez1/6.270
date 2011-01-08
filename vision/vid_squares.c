@@ -401,7 +401,6 @@ void drawSquares( IplImage* img, IplImage* grayscale, CvSeq* squares )
 
         origin.x = bit_pt[0].x - step_x.x - step_y.x;
         origin.y = bit_pt[0].y - step_x.y - step_y.y;
-        printf("Origin (%f,%f), step_x (%f,%f), step_y (%f,%f)", origin.x, origin.y, step_x.x, step_x.y, step_y.x, step_y.y);
 
         int offset_x[12] = {1,2,1,2,1,2,0,3,0,3,1,2};
         int offset_y[12] = {1,1,2,2,0,0,1,1,2,2,3,3};

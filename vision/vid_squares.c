@@ -227,9 +227,9 @@ CvSeq* findSquares4( IplImage* tgray, CvMemStorage* storage )
                 // area may be positive or negative - in accordance with the
                 // contour orientation
                 if( result->total == 4 &&
-                    cvContourArea(result,CV_WHOLE_SEQ,0) > min_area &&
-                    cvContourArea(result,CV_WHOLE_SEQ,0) < max_area &&
-                    cvCheckContourConvexity(result) )
+                    -cvContourArea(result,CV_WHOLE_SEQ,1) > min_area &&
+                    -cvContourArea(result,CV_WHOLE_SEQ,1) < max_area &&
+                    cvCheckContourConvexity(result))
                 {
                     s = 0;
 
@@ -249,11 +249,11 @@ CvSeq* findSquares4( IplImage* tgray, CvMemStorage* storage )
 
                     // if cosines of all angles are small
                     // (all angles are ~90 degree) then write quandrange
-                    // vertices to resultant sequence
+                    // vertices to resultant sequence in clockwise order
                     if( s < 0.3 )
                         for( i = 0; i < 4; i++ )
                             cvSeqPush( squares,
-                                (CvPoint*)cvGetSeqElem( result, i ));
+                                (CvPoint*)cvGetSeqElem( result, 3-i ));
                 }
 
                 // take the next contour
@@ -326,7 +326,7 @@ void drawSquares( IplImage* img, IplImage* grayscale, CvSeq* squares )
         side_len[1] = dist_sq(&pt[1],&pt[2]);
         side_len[2] = dist_sq(&pt[2],&pt[3]);
         side_len[3] = dist_sq(&pt[3],&pt[0]);
-        
+
         double tolerance = (double)side_tolerance / 100.;
         //check to make sure all sides are approx. the same length as side 0
         if (fabs(side_len[0] - side_len[1])/side_len[0] > tolerance ||
@@ -339,27 +339,41 @@ void drawSquares( IplImage* img, IplImage* grayscale, CvSeq* squares )
 
         // draw the square as a closed polyline
         cvPolyLine( cpy, &rect, &count, 1, 1, CV_RGB(0,0,255), 2, CV_AA, 0 );
-       
-        CvPoint corner_pt[4];
-        corner_pt[0].x = (pt[2].x*3+pt[0].x*13)/16;
-        corner_pt[0].y = (pt[2].y*3+pt[0].y*13)/16;
-        corner_pt[1].x = (pt[3].x*3+pt[1].x*13)/16;
-        corner_pt[1].y = (pt[3].y*3+pt[1].y*13)/16;
-        corner_pt[2].x = (pt[0].x*3+pt[2].x*13)/16;
-        corner_pt[2].y = (pt[0].y*3+pt[2].y*13)/16;
-        corner_pt[3].x = (pt[1].x*3+pt[3].x*13)/16;
-        corner_pt[3].y = (pt[1].y*3+pt[3].y*13)/16;
+
+        float l = -.3, r = 4.3;
+        CvPoint2D32f src[4] = {{l,l},{r,l},{r,r},{l,r}};
+        CvPoint2D32f dst[4] = {{pt[0].x,pt[0].y},{pt[1].x,pt[1].y},{pt[2].x,pt[2].y},{pt[3].x,pt[3].y}};
+        CvMat* H = cvCreateMat(3,3,CV_32FC1);
+        H = cvGetPerspectiveTransform(src, dst, H);
+
+        //calculate the coordinates of each bit
+        CvPoint2D32f bit_pt_raw[16];
+        int j;
+        for (j=0; j<16; j++)
+            bit_pt_raw[j] = cvPoint2D32f(.5 + j%4, .5 + j/4);
+        CvMat pts = cvMat(1, 16, CV_32FC2, bit_pt_raw);
+        cvPerspectiveTransform(&pts, &pts, H);
+
+        cvReleaseMat(&H);
+
+        int bit_raw[16];
+        for (j=0; j<16; j++)
+            bit_raw[j] = (get_5pixel_avg(img, bit_pt_raw[j].x, bit_pt_raw[j].y) > threshold);
 
         int corner[4];
-        corner[0] = get_5pixel_avg(grayscale, corner_pt[0].x, corner_pt[0].y);
-        corner[1] = get_5pixel_avg(grayscale, corner_pt[1].x, corner_pt[1].y);
-        corner[2] = get_5pixel_avg(grayscale, corner_pt[2].x, corner_pt[2].y);
-        corner[3] = get_5pixel_avg(grayscale, corner_pt[3].x, corner_pt[3].y);
+        corner[0] = bit_raw[0];
+        corner[1] = bit_raw[3];
+        corner[2] = bit_raw[15];
+        corner[3] = bit_raw[12];
 
+        // registration corner is the white corner whose clockwise neighbor is black
         int best_corner = -1;
-        int j;
         for (j=0; j<4; j++){
-          if(corner[j] > threshold){
+          if(corner[j] && !corner[(j+1) % 4]){
+            if (best_corner != -1) { // corner is ambiguous
+                best_corner = -1;
+                break;
+            }
             best_corner = j;
           }
         }
@@ -368,82 +382,72 @@ void drawSquares( IplImage* img, IplImage* grayscale, CvSeq* squares )
             continue;
         }
 
-        //TODO: fix hack:
-        if(corner[0]>threshold && corner[3]>threshold){
-          best_corner = 0;
-        }
         CvPoint center = cvPoint((pt[0].x + pt[1].x + pt[2].x + pt[3].x)/4,(pt[0].y + pt[1].y + pt[2].y + pt[3].y)/4);
 
-
-        //corner_idx is used to map corner indices in relation to the registration 
-        //  corner to absolute corner indices
-        //e.g. if corner_pt[3] is the registration corner, then corner_idx[0]=3, 
-        //  corner_idx[1]=0, corner_idx[2]=1, etc
-
-        int corner_idx[4];
-        corner_idx[0]=(4+best_corner)%4;
-        corner_idx[1]=(3+best_corner)%4;
-        corner_idx[2]=(2+best_corner)%4;
-        corner_idx[3]=(1+best_corner)%4;
-
-        //make sure the other 3 corners are dark, otherwise ignore this square
-        if( get_5pixel_avg(grayscale, corner_pt[corner_idx[3]].x, corner_pt[corner_idx[3]].y) > threshold ||
-            get_5pixel_avg(grayscale, corner_pt[corner_idx[2]].x, corner_pt[corner_idx[2]].y) > threshold){
-            continue;
+        // shift indices so that best_corner -> 0
+        CvPoint2D32f bit_pt_true[16];
+        int bit_true[16];
+        for (j=0; j<16; j++) {
+            int x = j%4, y=j/4;
+            int xp, yp;
+            switch (best_corner) {
+                case 0:
+                    xp = x; yp = y;
+                    break;
+                case 1:
+                    xp = 3-y; yp = x;
+                    break;
+                case 2:
+                    xp = 3-x; yp = 3-y;
+                    break;
+                case 3:
+                    xp = y; yp = 3-x;
+                    break;
+            }
+            int j_raw = xp + yp*4;
+            bit_pt_true[j] = bit_pt_raw[j_raw];
+            bit_true[j] = bit_raw[j_raw];
         }
 
-
-        //calculate the coordinates of each bit
-        CvPoint bit_pt[4];
-        bit_pt[0].x = (pt[corner_idx[0]].x*3+pt[corner_idx[2]].x*5)/8;
-        bit_pt[0].y = (pt[corner_idx[0]].y*3+pt[corner_idx[2]].y*5)/8;
-        bit_pt[1].x = (pt[corner_idx[1]].x*3+pt[corner_idx[3]].x*5)/8;
-        bit_pt[1].y = (pt[corner_idx[1]].y*3+pt[corner_idx[3]].y*5)/8;
-        bit_pt[3].x = (pt[corner_idx[2]].x*3+pt[corner_idx[0]].x*5)/8;
-        bit_pt[3].y = (pt[corner_idx[2]].y*3+pt[corner_idx[0]].y*5)/8;
-        bit_pt[2].x = (pt[corner_idx[3]].x*3+pt[corner_idx[1]].x*5)/8;
-        bit_pt[2].y = (pt[corner_idx[3]].y*3+pt[corner_idx[1]].y*5)/8;
-
         //for debugging, draw a dot over each bit location
-        cvCircle(cpy, bit_pt[0], 3, CV_RGB(255,0,0),-1,8,0);
-        cvCircle(cpy, bit_pt[1], 3, CV_RGB(0,255,0),-1,8,0);
-        cvCircle(cpy, bit_pt[2], 3, CV_RGB(0,0,255),-1,8,0);
-        cvCircle(cpy, bit_pt[3], 3, CV_RGB(255,0,255),-1,8,0);
+        cvCircle(cpy, cvPoint(bit_pt_true[5].x, bit_pt_true[5].y), 3, CV_RGB(255,0,0),-1,8,0);
+        cvCircle(cpy, cvPoint(bit_pt_true[6].x, bit_pt_true[6].y), 3, CV_RGB(0,255,0),-1,8,0);
+        cvCircle(cpy, cvPoint(bit_pt_true[9].x, bit_pt_true[9].y), 3, CV_RGB(0,0,255),-1,8,0);
+        cvCircle(cpy, cvPoint(bit_pt_true[10].x, bit_pt_true[10].y), 3, CV_RGB(255,0,255),-1,8,0);
 
         //read fiducial bits into "id"
-        int id =    ((get_5pixel_avg(img, corner_pt[corner_idx[1]].x, corner_pt[corner_idx[1]].y) >= threshold) << 4) +
-                    ((get_5pixel_avg(img, bit_pt[3].x, bit_pt[3].y) >= threshold) << 3) +
-                    ((get_5pixel_avg(img, bit_pt[2].x, bit_pt[2].y) >= threshold) << 2) +
-                    ((get_5pixel_avg(img, bit_pt[1].x, bit_pt[1].y) >= threshold) << 1) +
-                    ((get_5pixel_avg(img, bit_pt[0].x, bit_pt[0].y) >= threshold) << 0);
-        //printf("Found robot %i\n", id);
+        int id = (bit_true[5] << 0) + (bit_true[6] << 1) + (bit_true[9] << 2) + (bit_true[10] << 3) +
+                 (bit_true[1] << 4) + (bit_true[2] << 5) + (bit_true[4] << 6) + (bit_true[7] << 7) +
+                 (bit_true[8] << 8) + (bit_true[11] << 9) + (bit_true[13] << 10) + (bit_true[14] << 11) +
+                 ((bit_true[12] + bit_true[15]) << 12);
 
         //Show the robot's ID next to it
-        char buffer[20];
-        sprintf(buffer,"Robot %i",id);
-        cvPutText(cpy, buffer, cvPoint(center.x-20, center.y+50), &font, cvScalar(255,255,0,0));
-      
+        {
+            char buffer[20];
+            sprintf(buffer,"Robot %i",id);
+            cvPutText(cpy, buffer, cvPoint(center.x-20, center.y+50), &font, cvScalar(255,255,0,0));
+        }
 
         fiducial_t fiducial;
 
         if (id >= 0 && id < MAX_ROBOT_ID){
-            fiducial.tl.x = corner_pt[corner_idx[0]].x;
-            fiducial.tl.y = corner_pt[corner_idx[0]].y;
-            fiducial.tr.x = corner_pt[corner_idx[1]].x;
-            fiducial.tr.y = corner_pt[corner_idx[1]].y;
-            fiducial.br.x = corner_pt[corner_idx[2]].x;
-            fiducial.br.y = corner_pt[corner_idx[2]].y;
-            fiducial.bl.x = corner_pt[corner_idx[3]].x;
-            fiducial.bl.y = corner_pt[corner_idx[3]].y;
+            fiducial.tl.x = bit_pt_true[0].x;
+            fiducial.tl.y = bit_pt_true[0].y;
+            fiducial.tr.x = bit_pt_true[3].x;
+            fiducial.tr.y = bit_pt_true[3].y;
+            fiducial.br.x = bit_pt_true[15].x;
+            fiducial.br.y = bit_pt_true[15].y;
+            fiducial.bl.x = bit_pt_true[12].x;
+            fiducial.bl.y = bit_pt_true[12].y;
         }
 
         if (projection != NULL){
             CvPoint center = project(projection, fiducial_center(fiducial));
-            
+
             //to find the heading, "extend" the top and bottom edges 4x to the right and take 
             //  the average endpoint, then project this and take the dx and dy in the projected 
             //  space to find the angle it makes
-            
+
             int extended_top_x = fiducial.tr.x + (fiducial.tr.x - fiducial.tl.x)*4;
             int extended_top_y = fiducial.tr.y + (fiducial.tr.y - fiducial.tl.y)*4;
 
@@ -489,8 +493,7 @@ void drawSquares( IplImage* img, IplImage* grayscale, CvSeq* squares )
         }
 
         //make a dot in the registration corner
-        cvCircle(cpy, corner_pt[corner_idx[0]], 6, CV_RGB(255,0,0),-1,8,0);
-        
+        cvCircle(cpy, cvPoint(bit_pt_true[0].x, bit_pt_true[0].y), 6, CV_RGB(255,0,0),-1,8,0);
     }
 
 
@@ -515,7 +518,7 @@ void drawSquares( IplImage* img, IplImage* grayscale, CvSeq* squares )
             imageProjectionPoints[1] = cvPoint(projectionPoints[1].x/4,projectionPoints[1].y/4);
             imageProjectionPoints[2] = cvPoint(projectionPoints[2].x/4,projectionPoints[2].y/4);
             imageProjectionPoints[3] = cvPoint(projectionPoints[3].x/4,projectionPoints[3].y/4);
-            
+
             cvLine(cpy, imageProjectionPoints[0], imageProjectionPoints[1], CV_RGB(30,30,200), 2, 8, 0);
             cvLine(cpy, imageProjectionPoints[1], imageProjectionPoints[2], CV_RGB(30,30,200), 2, 8, 0);
             cvLine(cpy, imageProjectionPoints[2], imageProjectionPoints[3], CV_RGB(30,30,200), 2, 8, 0);
@@ -600,7 +603,8 @@ int main(int argc, char** argv)
     //printf("PROPERTY: %f\n",cvGetCaptureProperty( capture, CV_CAP_PROP_MODE ));
     */
     cvNamedWindow( WND_MAIN, 1 );
-    cvNamedWindow( WND_CONTROLS, CV_WINDOW_AUTOSIZE);
+    cvNamedWindow( WND_CONTROLS, 1);
+    cvResizeWindow( WND_CONTROLS, 200, 400);
     cvNamedWindow( WND_FILTERED, CV_WINDOW_AUTOSIZE);
     cvCreateTrackbar( TRK_THRESHOLD, WND_CONTROLS, &threshold, 255, NULL);
     cvCreateTrackbar( TRK_TOLERANCE, WND_CONTROLS, &side_tolerance, 300, NULL);

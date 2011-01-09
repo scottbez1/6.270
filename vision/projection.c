@@ -75,7 +75,7 @@ CvPoint project(CvMat *projection, CvPoint point){
 }
 
 void projection_destroy(CvMat *projection){
-    cvReleaseMat(projection);
+    cvReleaseMat(&projection);
 }
 
 

@@ -22,12 +22,4 @@
     </rdf:RDF>
   </metadata>
 
-  <rect
-     style="opacity:1;fill:#%(color)s;fill-opacity:1;fill-rule:nonzero;stroke:none"
-     id="r%(id)d"
-     x="%(x)f"
-     y="%(y)f"
-     width="%(width)f"
-     height="%(height)f" />
-
 </svg>

@@ -98,6 +98,7 @@ int clamp(int x, int low, int high){
 
 
 CvMat *projection;
+CvMat *invProjection;
 
 CvPoint projectionPoints[4];
 
@@ -127,13 +128,14 @@ void mouseHandler(int event, int x, int y, int flags, void* param){
                 projectionPoints[3] = cvPoint(x*4,y*4);
                 mouseState = MOUSE_NA;
                 
-                projection_init(projection,
+                projection_init(&projection,
+                                &invProjection,
                                 projectionPoints[0],
                                 projectionPoints[1],
                                 projectionPoints[2],
                                 projectionPoints[3],
-                                X_MIN, X_MAX, Y_MIN, Y_MAX,
-                                0);
+                                X_MIN, X_MAX, Y_MIN, Y_MAX);
+                printf("projection: %p\n", projection);
                 break;
         }
     }
@@ -149,8 +151,8 @@ static void fiducial_clear(fiducial_t *f){
     f->br = cvPoint(0,0);
 }
 
-static CvPoint fiducial_center(fiducial_t f){
-    return cvPoint( f.tl.x + f.tr.x + f.bl.x + f.br.x,
+static CvPoint2D32f fiducial_center(fiducial_t f){
+    return cvPoint2D32f( f.tl.x + f.tr.x + f.bl.x + f.br.x,
                     f.tl.y + f.tr.y + f.bl.y + f.br.y);
 }
 
@@ -442,7 +444,7 @@ void drawSquares( IplImage* img, IplImage* grayscale, CvSeq* squares )
         }
 
         if (projection != NULL){
-            CvPoint center = project(projection, fiducial_center(fiducial));
+            CvPoint2D32f center = project(projection, fiducial_center(fiducial));
 
             //to find the heading, "extend" the top and bottom edges 4x to the right and take 
             //  the average endpoint, then project this and take the dx and dy in the projected 
@@ -461,7 +463,7 @@ void drawSquares( IplImage* img, IplImage* grayscale, CvSeq* squares )
             cvCircle(cpy, cvPoint(extended_avg_x,extended_avg_y), 5, CV_RGB(255,255,255),-1,8,0);
 
             //project into coordinate space
-            CvPoint projected_extension = project(projection, cvPoint(extended_avg_x*4,extended_avg_y*4));
+            CvPoint2D32f projected_extension = project(projection, cvPoint2D32f(extended_avg_x*4,extended_avg_y*4));
 
             //find the dx and dy with respect to the fiducial's center point
             float dx = ((float)projected_extension.x-(float)center.x);
@@ -486,7 +488,7 @@ void drawSquares( IplImage* img, IplImage* grayscale, CvSeq* squares )
             robot->theta = theta / PI * 2048; //change theta from +/- PI to +/-2048 (signed 12 bit int)
             pthread_mutex_unlock( &robot->lock);
 
-            if (id == 7){
+            if (id == 11){
                 printf("X: %04i, Y: %04i, theta: %04i, theta_act: %f, proj_x:%i, proj_y:%i \n", robot->x, robot->y, robot->theta, theta, projected_extension.x, projected_extension.y);
             }
 

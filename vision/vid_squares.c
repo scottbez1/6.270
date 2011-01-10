@@ -41,6 +41,17 @@
 #include "projection.h"
 #include <pthread.h>
 
+#include <time.h>
+
+#define MATCH_LEN_SECONDS 60
+
+#define MATCH_ENDED 0
+#define MATCH_RUNNING 1
+int matchState = MATCH_ENDED;
+time_t matchStartTime;
+
+int sendStartPacket = 0;   //flag to have a start packet sent ASAP
+
 #define PI 3.14159265
 
 //size of space to project onto
@@ -95,6 +106,74 @@ robot_t robot_b;
 int clamp(int x, int low, int high){
     return x < low ? low : (x > high ? high : x);
 }
+
+
+// returns the squared euclidian distance between two points
+double dist_sq(CvPoint* a, CvPoint* b){
+    double dx = a->x - b->x;
+    double dy = a->y - b->y;
+    return dx*dx+dy*dy;
+}
+
+int get_5pixel_avg(IplImage* img, int x, int y){
+    int sum = 0;
+    int num = 0;
+
+    sum += cvGet2D(img, y, x).val[0];
+    num ++;
+
+    if (x-1 > 0){
+        sum += cvGet2D(img, y, x-1).val[0];
+        num++;
+    }
+    if (x+1 < img->width){
+        sum += cvGet2D(img, y, x+1).val[0];
+        num++;
+    }
+    if (y-1 > 0){
+        sum += cvGet2D(img, y-1, x).val[0];
+        num++;
+    }
+    if (y+1 < img->height){
+        sum += cvGet2D(img, y+1, x).val[0];
+        num++;
+    }
+    return sum/num;
+}
+
+
+
+#define GOAL_TOLERANCE 50
+int score = 0;
+
+#define NUM_GOALS 2
+CvPoint goals[] = {
+                    {0, -1024},
+                    {-1700, -1024}  
+                  };
+
+
+int currentGoal = 0;
+void resetGoals(){
+    currentGoal = 0;
+    score = 0;
+}
+
+void checkGoals(){
+    CvPoint robotPt = cvPoint(robot_a.x, robot_a.y);
+    if (sqrt(dist_sq(&goals[currentGoal], &robotPt)) <= GOAL_TOLERANCE){
+        score++;
+        currentGoal++;
+        if (currentGoal >= NUM_GOALS){
+            currentGoal = 0;
+        }
+        printf("GOAL!\n");
+    }
+}
+
+
+
+
 
 
 CvMat *projection;
@@ -264,39 +343,6 @@ CvSeq* findSquares4( IplImage* tgray, CvMemStorage* storage )
     // release all the temporary images
     cvReleaseImage( &gray );
     return squares;
-}
-
-// returns the squared euclidian distance between two points
-double dist_sq(CvPoint* a, CvPoint* b){
-    double dx = a->x - b->x;
-    double dy = a->y - b->y;
-    return dx*dx+dy*dy;
-}
-
-int get_5pixel_avg(IplImage* img, int x, int y){
-    int sum = 0;
-    int num = 0;
-
-    sum += cvGet2D(img, y, x).val[0];
-    num ++;
-
-    if (x-1 > 0){
-        sum += cvGet2D(img, y, x-1).val[0];
-        num++;
-    }
-    if (x+1 < img->width){
-        sum += cvGet2D(img, y, x+1).val[0];
-        num++;
-    }
-    if (y-1 > 0){
-        sum += cvGet2D(img, y-1, x).val[0];
-        num++;
-    }
-    if (y+1 < img->height){
-        sum += cvGet2D(img, y+1, x).val[0];
-        num++;
-    }
-    return sum/num;
 }
 
 // the function draws all the squares in the image
@@ -489,7 +535,7 @@ void drawSquares( IplImage* img, IplImage* grayscale, CvSeq* squares )
             pthread_mutex_unlock( &robot->lock);
 
             if (id == 11){
-                printf("X: %04i, Y: %04i, theta: %04i, theta_act: %f, proj_x:%i, proj_y:%i \n", robot->x, robot->y, robot->theta, theta, projected_extension.x, projected_extension.y);
+                printf("X: %04i, Y: %04i, theta: %04i, theta_act: %f, proj_x:%f, proj_y:%f \n", robot->x, robot->y, robot->theta, theta, projected_extension.x, projected_extension.y);
             }
 
         }
@@ -528,17 +574,44 @@ void drawSquares( IplImage* img, IplImage* grayscale, CvSeq* squares )
             break;
     }
 
+    char scoreString[200];
+    sprintf(scoreString, "Score: %i", score);
+    cvPutText(cpy, scoreString, cvPoint(5, 440), &font, cvScalar(0,255,255,0));
+
+
+    if (matchState == MATCH_ENDED){
+        cvPutText(cpy, "Match ended.  Press <r> to start a new match.", cvPoint(5, 460), &font, cvScalar(0, 255, 255, 0));
+    } else if (matchState == MATCH_RUNNING){
+        char timeString[200];
+        
+        //grab the currentTime
+        time_t now;
+        time(&now);
+        sprintf(timeString, "Remaining time: %i seconds.", MATCH_LEN_SECONDS - (int)(now - matchStartTime));
+        
+        
+        cvPutText(cpy, timeString, cvPoint(5, 460), &font, cvScalar(0,255,255,0));
+        
+        //draw circle at goal
+        CvPoint2D32f goalPt = cvPoint2D32f(goals[currentGoal].x, goals[currentGoal].y);
+        goalPt = project(invProjection, goalPt);
+        cvCircle(cpy, cvPoint(goalPt.x/4, goalPt.y/4), 6, CV_RGB(0,0,255),-1,8,0);
+    }
+
     // show the resultant image
     cvShowImage( WND_MAIN, cpy );
     cvReleaseImage( &cpy );
 }
 
 void* runSerial(void* params){
+
+
     packet_buffer position;
     while(1){
+       position.type = POSITION;
+       position.address = 0xFF;
+       
         pthread_mutex_lock( &robot_a.lock );
-            position.type = POSITION;
-            position.address = 0xFF;
             position.payload.coords[0].id = robot_a.id;
             position.payload.coords[0].x = robot_a.x;
             position.payload.coords[0].y = robot_a.y;
@@ -546,8 +619,6 @@ void* runSerial(void* params){
         pthread_mutex_unlock(&robot_a.lock);
         
         pthread_mutex_lock( &robot_b.lock );
-            position.type = POSITION;
-            position.address = 0xFF;
             position.payload.coords[1].id = robot_b.id;
             position.payload.coords[1].x = robot_b.x;
             position.payload.coords[1].y = robot_b.y;
@@ -555,6 +626,18 @@ void* runSerial(void* params){
         pthread_mutex_unlock(&robot_b.lock);
             
         serial_send_packet(&position);
+
+        if (sendStartPacket){
+            packet_buffer startPacket;
+            startPacket.type = START;
+            startPacket.payload.array[0] = robot_a.id;
+            startPacket.payload.array[1] = robot_b.id;
+
+            serial_send_packet(&startPacket);
+
+            sendStartPacket = 0;
+        }
+
         //usleep(50000);
     }
 }
@@ -566,6 +649,7 @@ int main(int argc, char** argv)
         fprintf(stderr, "Could not open serial port!\n");
     }
     serial_sync();
+    
     
     cvInitFont(&font, CV_FONT_HERSHEY_SIMPLEX, 0.5, 0.5, 0, 2, CV_AA);
     int c;
@@ -618,24 +702,6 @@ int main(int argc, char** argv)
     //setup mouse handler
     cvSetMouseCallback(WND_MAIN,mouseHandler, NULL);
 
-/*
-    printf("To initialize coordinate projection, place fiducial markers in corners: \n\
-_____________________________\n\
-|###                     ###|\n\
-|#0#                     #1#|\n\
-|###                     ###|\n\
-|                           |\n\
-|                           |\n\
-|                           |\n\
-|                           |\n\
-|                           |\n\
-|###                     ###|\n\
-|#3#                     #2#|\n\
-|###                     ###|\n\
-|---------------------------|\n\
-and then press <i>. \n\n");
-*/
-
     printf("To initialize coordinate projection, press <i>\n");
 
     //start the serial comm thread
@@ -674,15 +740,22 @@ and then press <i>. \n\n");
             break;
         } else if ( (char) c == 'i' ){
             mouseState = MOUSE_PROJECT_1;
-            /*
-            projection_init(projection,
-                            fiducial_center(fiducials[0]),
-                            fiducial_center(fiducials[1]),
-                            fiducial_center(fiducials[2]),
-                            fiducial_center(fiducials[3]),
-                            0);
-            */
+        } else if ( (char) c == 'r' ){
+            time(&matchStartTime); //set the match start time
+            matchState = MATCH_RUNNING;
+            sendStartPacket = 1; //set flag for start packet to be sent
+            resetGoals();
         }
+
+
+        time_t now;
+        time(&now);
+        if ((int)(now - matchStartTime) >= MATCH_LEN_SECONDS){
+            matchState = MATCH_ENDED;
+        } else {
+            checkGoals();
+        }
+
     }
 
 

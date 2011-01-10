@@ -624,7 +624,14 @@ void* runSerial(void* params){
             position.payload.coords[1].y = robot_b.y;
             position.payload.coords[1].theta = robot_b.theta;
         pthread_mutex_unlock(&robot_b.lock);
-            
+        
+        
+        //put goal position as object 2:
+        position.payload.coords[2].id = 100;
+        position.payload.coords[2].x = clamp(goals[currentGoal].x, X_MIN, X_MAX);
+        position.payload.coords[2].y = clamp(goals[currentGoal].y, Y_MIN, Y_MAX);
+
+
         serial_send_packet(&position);
 
         if (sendStartPacket){

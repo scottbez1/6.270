@@ -63,6 +63,8 @@ int sendStartPacket = 0;   //flag to have a start packet sent ASAP
 
 #define FOOT 512.0
 
+#define SHOW_FILTERED_OUTPUT 0
+
 int threshold = 100;
 
 CvMemStorage* storage = 0;
@@ -82,7 +84,7 @@ int randomGoalSeed;
 
 int side_tolerance = 50;
 
-int min_area = 1220; // ~ square of (fraction of frame width in 1/1000s)
+int min_area = 800; // ~ square of (fraction of frame width in 1/1000s)
 int max_area = 5800; // will be corrected for resolution
 
 CvFont font;
@@ -302,8 +304,10 @@ CvSeq* findSquares4( IplImage* tgray, CvMemStorage* storage )
     CvSeq* squares = cvCreateSeq( 0, sizeof(CvSeq), sizeof(CvPoint), storage );
 
             cvThreshold( tgray, gray, threshold, 255, CV_THRESH_BINARY );
-            
-            //cvShowImage( WND_FILTERED, gray );
+
+#if SHOW_FILTERED_OUTPUT
+            cvShowImage( WND_FILTERED, gray );
+#endif
 
             // find contours and store them all as a list
             cvFindContours( gray, storage, &contours, sizeof(CvContour),
@@ -488,7 +492,7 @@ void drawSquares( IplImage* img, IplImage* grayscale, CvSeq* squares )
 
         //Show the robot's ID next to it
         sprintf(buffer,"Robot %i",id);
-        cvPutText(cpy, buffer, cvPoint(center.x-20, center.y+50), &font, cvScalar(255,255,0,0));
+        cvPutText(cpy, buffer, cvPoint(center.x-20, center.y+50), &font, CV_RGB(255,255,0));
 
         fiducial_t fiducial;
 
@@ -550,7 +554,7 @@ void drawSquares( IplImage* img, IplImage* grayscale, CvSeq* squares )
                 theta = atan2(R_mat[1][0], R_mat[0][0]) + best_corner * M_PI/2;
                 cvCircle(cpy, cvPoint(A23_mat[0][2] + (A23_mat[0][0] + A23_mat[0][1])*(l+r)/2 + 100*cos(theta),A23_mat[1][2] + (A23_mat[1][0] + A23_mat[1][1])*(l+r)/2 + 100*sin(theta)), 5, CV_RGB(255,255,255),-1,8,0);
                 sprintf(buffer,"Angle %f",theta);
-                cvPutText(cpy, buffer, cvPoint(center.x-20, center.y-50), &font, cvScalar(255,255,0,0));
+                cvPutText(cpy, buffer, cvPoint(center.x-20, center.y-50), &font, CV_RGB(255,255,0));
             }
 
 
@@ -612,7 +616,7 @@ void drawSquares( IplImage* img, IplImage* grayscale, CvSeq* squares )
     }
 
     sprintf(buffer,"Score: %i", score);
-    cvPutText(cpy, buffer, cvPoint(5, 440), &font, cvScalar(0,255,255,0));
+    cvPutText(cpy, buffer, cvPoint(5, cpy->height-40), &font, CV_RGB(255,255,0));
 
     struct timeval t;
     gettimeofday(&t, NULL);
@@ -636,7 +640,7 @@ void drawSquares( IplImage* img, IplImage* grayscale, CvSeq* squares )
     } else {
         sprintf(buffer, "%.1f FPS", fps);
     }
-    cvPutText(cpy, buffer, cvPoint(5, 460), &font, cvScalar(0,255,255,0));
+    cvPutText(cpy, buffer, cvPoint(5, cpy->height-20), &font, CV_RGB(255,255,0));
 
     // show the resultant image
     cvShowImage( WND_MAIN, cpy );
@@ -724,14 +728,14 @@ int main(int argc, char** argv)
     robot_a.id=14;
     robot_b.id=7;
 
-    //setup camera properties
     /*
+    //setup camera properties
     cvSetCaptureProperty(capture, CV_CAP_PROP_BRIGHTNESS, 0.75);
-    cvSetCaptureProperty(capture, CV_CAP_PROP_CONTRAST, 1);
+    cvSetCaptureProperty(capture, CV_CAP_PROP_CONTRAST, 100);
     cvSetCaptureProperty(capture, CV_CAP_PROP_SATURATION, 0);
     cvSetCaptureProperty(capture, CV_CAP_PROP_BRIGHTNESS, 0.25);
-    //cvSetCaptureProperty(capture, CV_CAP_PROP_EXPOSURE, 0.2);
-    //cvSetCaptureProperty(capture, CV_CAP_PROP_GAIN, 0);
+    cvSetCaptureProperty(capture, CV_CAP_PROP_EXPOSURE, 0.2);
+    cvSetCaptureProperty(capture, CV_CAP_PROP_GAIN, 0);
 
     //printf("PROPERTY: %f\n",cvGetCaptureProperty( capture, CV_CAP_PROP_MODE ));
     */
@@ -739,14 +743,17 @@ int main(int argc, char** argv)
     cvSetCaptureProperty( capture, CV_CAP_PROP_FRAME_WIDTH, 960);
     cvSetCaptureProperty( capture, CV_CAP_PROP_FRAME_HEIGHT, 720);
     float frameWidth = cvGetCaptureProperty(capture,CV_CAP_PROP_FRAME_WIDTH);
-    printf("%f, %f\n", frameWidth, cvGetCaptureProperty(capture,CV_CAP_PROP_FRAME_HEIGHT));
+    float frameHeight = cvGetCaptureProperty(capture,CV_CAP_PROP_FRAME_HEIGHT);
+    printf("%f, %f\n", frameWidth, frameHeight);
     min_area *= (frameWidth*frameWidth)/(1000*1000);
     max_area *= (frameWidth*frameWidth)/(1000*1000);
 
     cvNamedWindow( WND_MAIN, 1 );
     cvNamedWindow( WND_CONTROLS, 1);
     cvResizeWindow( WND_CONTROLS, 200, 400);
+#if SHOW_FILTERED_OUTPUT
     cvNamedWindow( WND_FILTERED, CV_WINDOW_AUTOSIZE);
+#endif
     cvCreateTrackbar( TRK_THRESHOLD, WND_CONTROLS, &threshold, 255, NULL);
     cvCreateTrackbar( TRK_TOLERANCE, WND_CONTROLS, &side_tolerance, 300, NULL);
     cvCreateTrackbar( TRK_MIN_AREA, WND_CONTROLS, &min_area, 10000, NULL);

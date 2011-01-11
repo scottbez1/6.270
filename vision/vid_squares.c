@@ -767,7 +767,9 @@ int main(int argc, char** argv)
 
 
     if (projection)
-        projection_destroy(projection);
+        cvReleaseMat(&projection);
+    if (invProjection)
+        cvReleaseMat(&invProjection);
 
     cvDestroyWindow( WND_MAIN);
 

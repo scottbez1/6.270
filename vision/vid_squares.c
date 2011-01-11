@@ -61,10 +61,10 @@ int sendStartPacket = 0;   //flag to have a start packet sent ASAP
 #define Y_MIN -2048
 #define Y_MAX 2047
 
+#define FOOT 512.0
 
 int threshold = 100;
 
-IplImage* img = 0;
 CvMemStorage* storage = 0;
 const char* WND_MAIN = "6.270 Vision System";
 const char* WND_FILTERED = "Filtered Video";
@@ -80,10 +80,10 @@ const char* TRK_RAND_GOAL_SEED = "Random goal seed";
 int randomGoalSeed;
 
 
-int side_tolerance = 20;
+int side_tolerance = 50;
 
-int min_area = 500;
-int max_area = 2000;
+int min_area = 1220; // ~ square of (fraction of frame width in 1/1000s)
+int max_area = 5800; // will be corrected for resolution
 
 CvFont font;
 
@@ -150,9 +150,10 @@ int get_5pixel_avg(IplImage* img, int x, int y){
 #define GOAL_TOLERANCE 50
 int score = 0;
 
-CvPoint goal = {0,0};
+CvPoint goal;
 
 void reseedRandom(){
+    goal = cvPoint(X_MIN, Y_MIN);
     srand(randomGoalSeed);
 }
 
@@ -165,9 +166,15 @@ int boundedRandom(int min, int max){
 }
 
 void pickNewGoal(){
-    int x = boundedRandom(-2048+600, 2047-600);
-    int y = boundedRandom(-2048+600, 0 - 600);
-    goal = cvPoint(x,y);
+    CvPoint newGoal;
+
+    do {
+        int x = boundedRandom(-2048+600, 2047-600);
+        int y = boundedRandom(-2048+600, 0 - 600);
+        newGoal = cvPoint(x,y);
+
+    } while (dist_sq(&newGoal, &goal) < 768*768); //require goals to be at least 18in. (768 ticks) apart
+    goal = newGoal;
 }
 
 void checkGoals(){
@@ -286,7 +293,7 @@ CvSeq* findSquares4( IplImage* tgray, CvMemStorage* storage )
 {
     CvSeq* contours;
     int i;
-    CvSize sz = cvSize( img->width & -2, img->height & -2 );
+    CvSize sz = cvSize( tgray->width & -2, tgray->height & -2 );
     IplImage* gray = cvCreateImage( sz, 8, 1 );
     CvSeq* result;
     double s, t;
@@ -296,7 +303,7 @@ CvSeq* findSquares4( IplImage* tgray, CvMemStorage* storage )
 
             cvThreshold( tgray, gray, threshold, 255, CV_THRESH_BINARY );
             
-            cvShowImage( WND_FILTERED, gray );
+            //cvShowImage( WND_FILTERED, gray );
 
             // find contours and store them all as a list
             cvFindContours( gray, storage, &contours, sizeof(CvContour),
@@ -607,27 +614,29 @@ void drawSquares( IplImage* img, IplImage* grayscale, CvSeq* squares )
     sprintf(buffer,"Score: %i", score);
     cvPutText(cpy, buffer, cvPoint(5, 440), &font, cvScalar(0,255,255,0));
 
+    struct timeval t;
+    gettimeofday(&t, NULL);
+    static double last_frame = 0.0;
+    double now = t.tv_sec + .000001 * t.tv_usec;
+    static float last_fps = 0.0;
+    float fps = 1.0/(now-last_frame);
+    last_frame = now;
+    fps = (10*last_fps + fps) / 11.;
+    last_fps = fps;
 
     if (matchState == MATCH_ENDED){
-        cvPutText(cpy, "Match ended.  Press <r> to start a new match.", cvPoint(5, 460), &font, cvScalar(0, 255, 255, 0));
+        sprintf(buffer, "Match ended.  Press <r> to start a new match.  %.1f FPS", fps);
     } else if (matchState == MATCH_RUNNING){
-        //grab the currentTime
-        struct timeval t;
-        gettimeofday(&t, NULL);
-        static double last_frame = 0.0;
-        double now = t.tv_sec + .000001 * t.tv_usec;
-
-        float fps = 1.0/(now-last_frame);
-        last_frame = now;
         sprintf(buffer, "Remaining time: 00:%6.3f seconds.  %.1f FPS", MATCH_LEN_SECONDS - (now - matchStartTime), fps);
-
-        cvPutText(cpy, buffer, cvPoint(5, 460), &font, cvScalar(0,255,255,0));
 
         //draw circle at goal
         CvPoint2D32f goalPt = cvPoint2D32f(goal.x, goal.y);
         goalPt = project(invProjection, goalPt);
         cvCircle(cpy, cvPoint(goalPt.x/4, goalPt.y/4), 6, CV_RGB(0,0,255),-1,8,0);
+    } else {
+        sprintf(buffer, "%.1f FPS", fps);
     }
+    cvPutText(cpy, buffer, cvPoint(5, 460), &font, cvScalar(0,255,255,0));
 
     // show the resultant image
     cvShowImage( WND_MAIN, cpy );
@@ -712,8 +721,8 @@ int main(int argc, char** argv)
     pthread_mutex_init(&robot_a.lock, NULL);
     pthread_mutex_init(&robot_b.lock, NULL);
 
-    robot_a.id=7;
-    robot_b.id=14;
+    robot_a.id=14;
+    robot_b.id=7;
 
     //setup camera properties
     /*
@@ -727,9 +736,12 @@ int main(int argc, char** argv)
     //printf("PROPERTY: %f\n",cvGetCaptureProperty( capture, CV_CAP_PROP_MODE ));
     */
 
-    cvSetCaptureProperty( capture, CV_CAP_PROP_FRAME_WIDTH, 800);
-    cvSetCaptureProperty( capture, CV_CAP_PROP_FRAME_HEIGHT, 500);
-    //printf("%f, %f\n", cvGetCaptureProperty(capture,CV_CAP_PROP_FRAME_WIDTH), cvGetCaptureProperty(capture,CV_CAP_PROP_FRAME_HEIGHT));
+    cvSetCaptureProperty( capture, CV_CAP_PROP_FRAME_WIDTH, 960);
+    cvSetCaptureProperty( capture, CV_CAP_PROP_FRAME_HEIGHT, 720);
+    float frameWidth = cvGetCaptureProperty(capture,CV_CAP_PROP_FRAME_WIDTH);
+    printf("%f, %f\n", frameWidth, cvGetCaptureProperty(capture,CV_CAP_PROP_FRAME_HEIGHT));
+    min_area *= (frameWidth*frameWidth)/(1000*1000);
+    max_area *= (frameWidth*frameWidth)/(1000*1000);
 
     cvNamedWindow( WND_MAIN, 1 );
     cvNamedWindow( WND_CONTROLS, 1);
@@ -754,8 +766,9 @@ int main(int argc, char** argv)
     pthread_create( &serialThread, NULL, &runSerial, NULL);
 
 
+    IplImage* img = 0;
     while(1){
-           IplImage* frame = 0;
+        IplImage* frame = 0;
 
         frame = cvQueryFrame( capture );
         if( !frame ){
@@ -763,8 +776,11 @@ int main(int argc, char** argv)
             continue;
             break;
         }
+        /*
+        img = cvCreateImage( cvSize(800, 600), frame->depth, frame->nChannels );
 
-        img = cvCloneImage( frame );
+        cvResize( frame, img , CV_INTER_LINEAR );*/
+        img = cvCloneImage(frame);
 
         IplImage* grayscale = filter_image(img);
 
@@ -806,6 +822,7 @@ int main(int argc, char** argv)
             checkGoals();
         }
 
+        cvReleaseImage(&img);
     }
 
 

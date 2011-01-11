@@ -48,7 +48,7 @@
 #define MATCH_ENDED 0
 #define MATCH_RUNNING 1
 int matchState = MATCH_ENDED;
-time_t matchStartTime;
+double matchStartTime;
 
 int sendStartPacket = 0;   //flag to have a start packet sent ASAP
 
@@ -357,6 +357,7 @@ CvSeq* findSquares4( IplImage* tgray, CvMemStorage* storage )
 //TODO: refactor to separate robot detection from drawing
 void drawSquares( IplImage* img, IplImage* grayscale, CvSeq* squares )
 {
+    char buffer[256];
     CvSeqReader reader;
     IplImage* cpy = cvCloneImage( img );
     int i;
@@ -479,11 +480,8 @@ void drawSquares( IplImage* img, IplImage* grayscale, CvSeq* squares )
                  ((bit_true[12] + bit_true[15]) << 12);
 
         //Show the robot's ID next to it
-        {
-            char buffer[20];
-            sprintf(buffer,"Robot %i",id);
-            cvPutText(cpy, buffer, cvPoint(center.x-20, center.y+50), &font, cvScalar(255,255,0,0));
-        }
+        sprintf(buffer,"Robot %i",id);
+        cvPutText(cpy, buffer, cvPoint(center.x-20, center.y+50), &font, cvScalar(255,255,0,0));
 
         fiducial_t fiducial;
 
@@ -544,11 +542,8 @@ void drawSquares( IplImage* img, IplImage* grayscale, CvSeq* squares )
                 // use affine approximation and SVD to determine angle
                 theta = atan2(R_mat[1][0], R_mat[0][0]) + best_corner * M_PI/2;
                 cvCircle(cpy, cvPoint(A23_mat[0][2] + (A23_mat[0][0] + A23_mat[0][1])*(l+r)/2 + 100*cos(theta),A23_mat[1][2] + (A23_mat[1][0] + A23_mat[1][1])*(l+r)/2 + 100*sin(theta)), 5, CV_RGB(255,255,255),-1,8,0);
-                {
-                    char buffer[20];
-                    sprintf(buffer,"Angle %f",theta);
-                    cvPutText(cpy, buffer, cvPoint(center.x-20, center.y-50), &font, cvScalar(255,255,0,0));
-                }
+                sprintf(buffer,"Angle %f",theta);
+                cvPutText(cpy, buffer, cvPoint(center.x-20, center.y-50), &font, cvScalar(255,255,0,0));
             }
 
 
@@ -609,24 +604,25 @@ void drawSquares( IplImage* img, IplImage* grayscale, CvSeq* squares )
             break;
     }
 
-    char scoreString[200];
-    sprintf(scoreString, "Score: %i", score);
-    cvPutText(cpy, scoreString, cvPoint(5, 440), &font, cvScalar(0,255,255,0));
+    sprintf(buffer,"Score: %i", score);
+    cvPutText(cpy, buffer, cvPoint(5, 440), &font, cvScalar(0,255,255,0));
 
 
     if (matchState == MATCH_ENDED){
         cvPutText(cpy, "Match ended.  Press <r> to start a new match.", cvPoint(5, 460), &font, cvScalar(0, 255, 255, 0));
     } else if (matchState == MATCH_RUNNING){
-        char timeString[200];
-        
         //grab the currentTime
-        time_t now;
-        time(&now);
-        sprintf(timeString, "Remaining time: %i seconds.", MATCH_LEN_SECONDS - (int)(now - matchStartTime));
-        
-        
-        cvPutText(cpy, timeString, cvPoint(5, 460), &font, cvScalar(0,255,255,0));
-        
+        struct timeval t;
+        gettimeofday(&t, NULL);
+        static double last_frame = 0.0;
+        double now = t.tv_sec + .000001 * t.tv_usec;
+
+        float fps = 1.0/(now-last_frame);
+        last_frame = now;
+        sprintf(buffer, "Remaining time: 00:%6.3f seconds.  %.1f FPS", MATCH_LEN_SECONDS - (now - matchStartTime), fps);
+
+        cvPutText(cpy, buffer, cvPoint(5, 460), &font, cvScalar(0,255,255,0));
+
         //draw circle at goal
         CvPoint2D32f goalPt = cvPoint2D32f(goal.x, goal.y);
         goalPt = project(invProjection, goalPt);
@@ -730,6 +726,11 @@ int main(int argc, char** argv)
 
     //printf("PROPERTY: %f\n",cvGetCaptureProperty( capture, CV_CAP_PROP_MODE ));
     */
+
+    cvSetCaptureProperty( capture, CV_CAP_PROP_FRAME_WIDTH, 800);
+    cvSetCaptureProperty( capture, CV_CAP_PROP_FRAME_HEIGHT, 500);
+    //printf("%f, %f\n", cvGetCaptureProperty(capture,CV_CAP_PROP_FRAME_WIDTH), cvGetCaptureProperty(capture,CV_CAP_PROP_FRAME_HEIGHT));
+
     cvNamedWindow( WND_MAIN, 1 );
     cvNamedWindow( WND_CONTROLS, 1);
     cvResizeWindow( WND_CONTROLS, 200, 400);
@@ -780,12 +781,17 @@ int main(int argc, char** argv)
         cvReleaseImage( &img );
         // clear memory storage - reset free space position
         cvClearMemStorage( storage );
+
+        struct timeval t;
+        gettimeofday(&t, NULL);
+        double now = t.tv_sec + 0.000001 * t.tv_usec;
+
         if( (char)c == 27 ){  //ESC
             break;
         } else if ( (char) c == 'i' ){
             mouseState = MOUSE_PROJECT_1;
         } else if ( (char) c == 'r' ){
-            time(&matchStartTime); //set the match start time
+            matchStartTime = now; //set the match start time
             matchState = MATCH_RUNNING;
             sendStartPacket = 1; //set flag for start packet to be sent
             reseedRandom();
@@ -794,9 +800,7 @@ int main(int argc, char** argv)
         }
 
 
-        time_t now;
-        time(&now);
-        if ((int)(now - matchStartTime) >= MATCH_LEN_SECONDS){
+        if ((now - matchStartTime) >= MATCH_LEN_SECONDS){
             matchState = MATCH_ENDED;
         } else {
             checkGoals();

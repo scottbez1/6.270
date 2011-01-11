@@ -99,7 +99,7 @@ typedef struct robot {
 } robot_t;
 
 
-#define MAX_ROBOT_ID 16
+#define MAX_ROBOT_ID 12288
 robot_t robot_a;
 robot_t robot_b;
 
@@ -388,10 +388,11 @@ void drawSquares( IplImage* img, IplImage* grayscale, CvSeq* squares )
         // draw the square as a closed polyline
         cvPolyLine( cpy, &rect, &count, 1, 1, CV_RGB(0,0,255), 2, CV_AA, 0 );
 
-        float l = -.3, r = 4.3;
+        float l = -.5, r = 4.5;
         CvPoint2D32f src[4] = {{l,l},{r,l},{r,r},{l,r}};
         CvPoint2D32f dst[4] = {{pt[0].x,pt[0].y},{pt[1].x,pt[1].y},{pt[2].x,pt[2].y},{pt[3].x,pt[3].y}};
-        CvMat* H = cvCreateMat(3,3,CV_32FC1);
+        float A23_mat[2][3];
+        CvMat *H = cvCreateMat(3,3,CV_32FC1), A = cvMat(2,3,CV_32FC1,A23_mat);
         H = cvGetPerspectiveTransform(src, dst, H);
 
         //calculate the coordinates of each bit
@@ -492,6 +493,21 @@ void drawSquares( IplImage* img, IplImage* grayscale, CvSeq* squares )
         if (projection != NULL){
             CvPoint2D32f center = project(projection, fiducial_center(fiducial));
 
+            CvMat srcM = cvMat(1, 4, CV_32FC2, src);
+            CvMat dstM = cvMat(1, 4, CV_32FC2, dst);
+            cvEstimateRigidTransform(&srcM, &dstM, &A, 1);
+
+            float A22_mat[2][2] = {{A23_mat[0][0],A23_mat[0][1]},{A23_mat[1][0],A23_mat[1][1]}};
+            CvMat A22  = cvMat(2,2,CV_32FC1,A22_mat);
+            float U_mat[2][2], W_mat[2][2], V_mat[2][2], R_mat[2][2];
+            CvMat U = cvMat(2,2,CV_32FC1,U_mat);
+            CvMat W = cvMat(2,2,CV_32FC1,W_mat);
+            CvMat V = cvMat(2,2,CV_32FC1,V_mat);
+            CvMat R = cvMat(2,2,CV_32FC1,R_mat);
+            cvSVD(&A22, &W, &U, &V, CV_SVD_U_T|CV_SVD_V_T); // A = U D V^T
+            cvTranspose(&U, &U);
+            cvMatMulAdd(&U, &V, 0, &R);
+
             //to find the heading, "extend" the top and bottom edges 4x to the right and take 
             //  the average endpoint, then project this and take the dx and dy in the projected 
             //  space to find the angle it makes
@@ -516,6 +532,17 @@ void drawSquares( IplImage* img, IplImage* grayscale, CvSeq* squares )
             float dy = ((float)projected_extension.y-(float)center.y);
 
             float theta = atan2(dy,dx);
+            if (0) {
+                // use affine approximation and SVD to determine angle
+                theta = atan2(R_mat[1][0], R_mat[0][0]) + best_corner * M_PI/2;
+                cvCircle(cpy, cvPoint(A23_mat[0][2] + (A23_mat[0][0] + A23_mat[0][1])*(l+r)/2 + 100*cos(theta),A23_mat[1][2] + (A23_mat[1][0] + A23_mat[1][1])*(l+r)/2 + 100*sin(theta)), 5, CV_RGB(255,255,255),-1,8,0);
+                {
+                    char buffer[20];
+                    sprintf(buffer,"Angle %f",theta);
+                    cvPutText(cpy, buffer, cvPoint(center.x-20, center.y-50), &font, cvScalar(255,255,0,0));
+                }
+            }
+
 
             robot_t *robot;
             if (robot_a.id == id){

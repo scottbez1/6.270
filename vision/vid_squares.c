@@ -161,7 +161,7 @@ void resetScore(){
 }
 
 int boundedRandom(int min, int max){
-    return min + (int)((rand()/(RAND_MAX +1.0))*(max-min));
+    return min + (int)((rand()/(float)RAND_MAX)*(max-min));
 }
 
 void pickNewGoal(){

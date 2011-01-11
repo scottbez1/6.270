@@ -76,6 +76,10 @@ const char* TRK_MAX_AREA = "Max square area";
 const char* TRK_ROBOT_A_ID = "Robot A id";
 const char* TRK_ROBOT_B_ID = "Robot B id";
 
+const char* TRK_RAND_GOAL_SEED = "Random goal seed";
+int randomGoalSeed;
+
+
 int side_tolerance = 20;
 
 int min_area = 500;
@@ -146,27 +150,31 @@ int get_5pixel_avg(IplImage* img, int x, int y){
 #define GOAL_TOLERANCE 50
 int score = 0;
 
-#define NUM_GOALS 2
-CvPoint goals[] = {
-                    {0, -1024},
-                    {-1700, -1024}  
-                  };
+CvPoint goal = {0,0};
 
+void reseedRandom(){
+    srand(randomGoalSeed);
+}
 
-int currentGoal = 0;
-void resetGoals(){
-    currentGoal = 0;
+void resetScore(){
     score = 0;
+}
+
+int boundedRandom(int min, int max){
+    return min + (int)((rand()/(RAND_MAX +1.0))*(max-min));
+}
+
+void pickNewGoal(){
+    int x = boundedRandom(-2048+600, 2047-600);
+    int y = boundedRandom(-2048+600, 0 - 600);
+    goal = cvPoint(x,y);
 }
 
 void checkGoals(){
     CvPoint robotPt = cvPoint(robot_a.x, robot_a.y);
-    if (sqrt(dist_sq(&goals[currentGoal], &robotPt)) <= GOAL_TOLERANCE){
+    if (sqrt(dist_sq(&goal, &robotPt)) <= GOAL_TOLERANCE){
         score++;
-        currentGoal++;
-        if (currentGoal >= NUM_GOALS){
-            currentGoal = 0;
-        }
+        pickNewGoal();
         printf("GOAL!\n");
     }
 }
@@ -593,7 +601,7 @@ void drawSquares( IplImage* img, IplImage* grayscale, CvSeq* squares )
         cvPutText(cpy, timeString, cvPoint(5, 460), &font, cvScalar(0,255,255,0));
         
         //draw circle at goal
-        CvPoint2D32f goalPt = cvPoint2D32f(goals[currentGoal].x, goals[currentGoal].y);
+        CvPoint2D32f goalPt = cvPoint2D32f(goal.x, goal.y);
         goalPt = project(invProjection, goalPt);
         cvCircle(cpy, cvPoint(goalPt.x/4, goalPt.y/4), 6, CV_RGB(0,0,255),-1,8,0);
     }
@@ -628,8 +636,8 @@ void* runSerial(void* params){
         
         //put goal position as object 2:
         position.payload.coords[2].id = 100;
-        position.payload.coords[2].x = clamp(goals[currentGoal].x, X_MIN, X_MAX);
-        position.payload.coords[2].y = clamp(goals[currentGoal].y, Y_MIN, Y_MAX);
+        position.payload.coords[2].x = clamp(goal.x, X_MIN, X_MAX);
+        position.payload.coords[2].y = clamp(goal.y, Y_MIN, Y_MAX);
 
 
         serial_send_packet(&position);
@@ -706,6 +714,8 @@ int main(int argc, char** argv)
     cvCreateTrackbar( TRK_ROBOT_A_ID, WND_CONTROLS, &robot_a.id, MAX_ROBOT_ID-1, NULL);
     cvCreateTrackbar( TRK_ROBOT_B_ID, WND_CONTROLS, &robot_b.id, MAX_ROBOT_ID-1, NULL);
 
+    cvCreateTrackbar( TRK_RAND_GOAL_SEED, WND_CONTROLS, &randomGoalSeed, 5000, NULL);
+
     //setup mouse handler
     cvSetMouseCallback(WND_MAIN,mouseHandler, NULL);
 
@@ -751,7 +761,9 @@ int main(int argc, char** argv)
             time(&matchStartTime); //set the match start time
             matchState = MATCH_RUNNING;
             sendStartPacket = 1; //set flag for start packet to be sent
-            resetGoals();
+            reseedRandom();
+            pickNewGoal();
+            resetScore();
         }
 
 

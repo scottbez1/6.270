@@ -6,23 +6,27 @@ import sys
 
 n = int(sys.argv[1])
 
-bits = [(n >> i) % 2 for i in range(0,12)]
+use16 = 1
+if use16:
+    bits = [(n >> i) % 2 for i in range(0,16)]
+else:
+    bits = [(n >> i) % 2 for i in range(0,12)]
 
-# 1fg0
-# habi
-# jcdk
-# elmn
-bits = \
-[1] + bits[4:6] + [0] + \
-bits[6:7] + bits[0:2] + bits[7:8] + \
-bits[8:9] + bits[2:4] + bits[9:10] + \
-[0] + bits[10:12] + [0]
+    # 1fg0
+    # habi
+    # jcdk
+    # elmn
+    bits = \
+    [1] + bits[4:6] + [0] + \
+    bits[6:7] + bits[0:2] + bits[7:8] + \
+    bits[8:9] + bits[2:4] + bits[9:10] + \
+    [0] + bits[10:12] + [0]
 
-extra = (n >> 12) % 3
-if extra > 0:
-    bits[12] = 1
-if extra > 1:
-    bits[15] = 1
+    extra = (n >> 12) % 3
+    if extra > 0:
+        bits[12] = 1
+    if extra > 1:
+        bits[15] = 1
 print bits
 
 a = [aa+'\n' for aa in open('template.svg','r').read().split('\n\n')]
@@ -30,8 +34,8 @@ a = [aa+'\n' for aa in open('template.svg','r').read().split('\n\n')]
 f = open('out.svg','w')
 
 inch = 90
-blackborder = .5 * inch
-whiteborder = .3 * inch
+blackborder = 1.0 * inch
+whiteborder = .5 * inch
 square = 1.0 * inch
 white = '#ffffff'
 black = '#000000'

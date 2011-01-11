@@ -37,8 +37,3 @@ CvPoint2D32f project(CvMat *projection, CvPoint2D32f point){
     return outputPoint[0];
 }
 
-void projection_destroy(CvMat *projection){
-    cvReleaseMat(&projection);
-}
-
-

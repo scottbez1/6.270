@@ -281,7 +281,7 @@ void rotateBitsToOrientation(CvPoint2D32f bit_pt_raw[16], int bit_raw[16], int o
     }
 }
 
-int readPattern(IplImage *img, CvPoint pt[4], CvPoint2D32f bit_pt_true[16], int *id, int *orientation) {
+int readPattern(IplImage *img, CvPoint pt[4], CvPoint2D32f bit_pt_true[16], int *id) {
     CvPoint2D32f bit_pt_raw[16];
     int bit_raw[16], bit_true[16];
 
@@ -296,8 +296,9 @@ int readPattern(IplImage *img, CvPoint pt[4], CvPoint2D32f bit_pt_true[16], int 
         bit_raw[j] = (get_5pixel_avg(img, bit_pt_raw[j].x, bit_pt_raw[j].y) > threshold);
     cvReleaseMat(&H);
 
-    if (!getOrientationFromBits(bit_raw, orientation)) return 0;
-    rotateBitsToOrientation(bit_pt_raw, bit_raw, *orientation, bit_pt_true, bit_true);
+    int orientation;
+    if (!getOrientationFromBits(bit_raw, &orientation)) return 0;
+    rotateBitsToOrientation(bit_pt_raw, bit_raw, orientation, bit_pt_true, bit_true);
     if (!getIDFromBits(bit_true, id)) return 0;
     return 1;
 }
@@ -425,14 +426,14 @@ void updateHUD(IplImage *img) {
     }
 }
 
-// the function detects robots and draws the HUD
+// detects robots and draws the HUD
 void processSquares( IplImage *img, IplImage *grayscale, CvSeq *squares ) {
     CvSeqReader reader;
     IplImage *cpy = cvCloneImage( img );
 
     CvPoint pt[4];
     CvPoint2D32f bit_pt_true[16], trueCenter, orientationHandle;
-    int orientation, id, success;
+    int id;
     float theta;
 
     // initialize reader of the sequence
@@ -442,7 +443,7 @@ void processSquares( IplImage *img, IplImage *grayscale, CvSeq *squares ) {
         for (int j=0; j<4; j++)
             CV_READ_SEQ_ELEM( pt[j], reader );
 
-        if (!readPattern(img, pt, bit_pt_true, &id, &orientation)) continue;
+        if (!readPattern(img, pt, bit_pt_true, &id)) continue;
 
         getCenterFromBits(bit_pt_true, &trueCenter);
 
@@ -584,6 +585,8 @@ int initCV(char *source) {
 
     cvSetCaptureProperty( capture, CV_CAP_PROP_FRAME_WIDTH, 960);
     cvSetCaptureProperty( capture, CV_CAP_PROP_FRAME_HEIGHT, 720);
+    frameWidth = 960;
+    frameHeight = 720;
     printf("%f, %f\n", frameWidth, frameHeight);
     min_area *= (frameWidth*frameWidth)/(1000*1000);
     max_area *= (frameWidth*frameWidth)/(1000*1000);

@@ -41,20 +41,20 @@
 #include "serial.h"
 #include "projection.h"
 
-#include "util.h"
-#include "game.h"
-
-typedef struct fiducial {
+typedef struct {
     CvPoint2D32f corners[4];
 } fiducial_t;
 
-typedef struct robot {
+typedef struct {
     int id;
     signed x : 12;
     signed y : 12;
     signed theta : 12;
     pthread_mutex_t lock;
 } robot_t;
+
+#include "util.h"
+#include "game.h"
 
 // for indexing into arrays representing clockwise quads
 #define TL 0

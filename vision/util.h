@@ -8,7 +8,6 @@ double dist_sq(CvPoint *a, CvPoint *b);
 int boundedRandom(int min, int max);
 int get_5pixel_avg(IplImage *img, int x, int y);
 double timeNow();
-CvPoint2D32f fiducial_center(fiducial_t f);
 double cosAngle( CvPoint *pt1, CvPoint *pt2, CvPoint *pt0 );
 
 #endif

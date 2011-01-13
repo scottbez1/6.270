@@ -47,15 +47,6 @@ double timeNow() {
     return t.tv_sec + .000001 * t.tv_usec;
 }
 
-CvPoint2D32f fiducial_center(fiducial_t f) {
-    float x=0, y=0;
-    for (int i=0; i<4; i++) {
-        x+=f.corners[i].x;
-        y+=f.corners[i].y;
-    }
-    return cvPoint2D32f( x/4, y/4 );
-}
-
 // helper function:
 // finds a cosine of angle between vectors
 // from pt0->pt1 and from pt0->pt2

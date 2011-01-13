@@ -33,6 +33,8 @@ int min_area = 800; // ~ square of (fraction of frame width in 1/1000s)
 int max_area = 5800; // will be corrected for resolution
 
 CvFont font;
+CvMemStorage *storage;
+CvCapture *capture;
 
 CvPoint pickNewGoal() {
     const int inset = 600;
@@ -97,8 +99,8 @@ IplImage *filter_image( IplImage *img ) {
 }
 
 // returns sequence of squares detected on the image.
-// the sequence is stored in the specified memory storage
-CvSeq *findCandidateSquares( IplImage *tgray, CvMemStorage *storage ) {
+// the sequence is stored in the shared memory storage
+CvSeq *findCandidateSquares(IplImage *tgray) {
     CvSeq *contours;
     int i;
     CvSize sz = cvSize( tgray->width & -2, tgray->height & -2 );
@@ -517,42 +519,42 @@ void cleanupUI() {
     cvDestroyWindow( WND_MAIN);
 }
 
-int initCV(char *source, CvMemStorage **storage, CvCapture **capture) {
+int initCV(char *source) {
     // create memory storage for contours
-    *storage = cvCreateMemStorage(0);
+    storage = cvCreateMemStorage(0);
 
-    *capture = 0;
+    capture = 0;
 
     int i = 0;
     if (source && sscanf(source, "%d", &i) != 1)
         i = -1;
 
     if (i!=-1)
-        *capture = cvCaptureFromCAM(i);
+        capture = cvCaptureFromCAM(i);
     else if (source)
-        *capture = cvCaptureFromAVI( source );
+        capture = cvCaptureFromAVI( source );
 
-    if( !*capture ) {
+    if( !capture ) {
         fprintf(stderr,"Could not initialize capturing...\n");
         return -1;
     }
 
     /*
     //setup camera properties
-    cvSetCaptureProperty(*capture, CV_CAP_PROP_BRIGHTNESS, 0.75);
-    cvSetCaptureProperty(*capture, CV_CAP_PROP_CONTRAST, 100);
-    cvSetCaptureProperty(*capture, CV_CAP_PROP_SATURATION, 0);
-    cvSetCaptureProperty(*capture, CV_CAP_PROP_BRIGHTNESS, 0.25);
-    cvSetCaptureProperty(*capture, CV_CAP_PROP_EXPOSURE, 0.2);
-    cvSetCaptureProperty(*capture, CV_CAP_PROP_GAIN, 0);
+    cvSetCaptureProperty(capture, CV_CAP_PROP_BRIGHTNESS, 0.75);
+    cvSetCaptureProperty(capture, CV_CAP_PROP_CONTRAST, 100);
+    cvSetCaptureProperty(capture, CV_CAP_PROP_SATURATION, 0);
+    cvSetCaptureProperty(capture, CV_CAP_PROP_BRIGHTNESS, 0.25);
+    cvSetCaptureProperty(capture, CV_CAP_PROP_EXPOSURE, 0.2);
+    cvSetCaptureProperty(capture, CV_CAP_PROP_GAIN, 0);
 
-    //printf("PROPERTY: %f\n",cvGetCaptureProperty( *capture, CV_CAP_PROP_MODE ));
+    //printf("PROPERTY: %f\n",cvGetCaptureProperty( capture, CV_CAP_PROP_MODE ));
     */
 
-    cvSetCaptureProperty( *capture, CV_CAP_PROP_FRAME_WIDTH, 960);
-    cvSetCaptureProperty( *capture, CV_CAP_PROP_FRAME_HEIGHT, 720);
-    float frameWidth = cvGetCaptureProperty(*capture,CV_CAP_PROP_FRAME_WIDTH);
-    float frameHeight = cvGetCaptureProperty(*capture,CV_CAP_PROP_FRAME_HEIGHT);
+    cvSetCaptureProperty( capture, CV_CAP_PROP_FRAME_WIDTH, 960);
+    cvSetCaptureProperty( capture, CV_CAP_PROP_FRAME_HEIGHT, 720);
+    float frameWidth = cvGetCaptureProperty(capture,CV_CAP_PROP_FRAME_WIDTH);
+    float frameHeight = cvGetCaptureProperty(capture,CV_CAP_PROP_FRAME_HEIGHT);
     printf("%f, %f\n", frameWidth, frameHeight);
     min_area *= (frameWidth*frameWidth)/(1000*1000);
     max_area *= (frameWidth*frameWidth)/(1000*1000);
@@ -570,6 +572,7 @@ void cleanupCV() {
 int initGame() {
     robot_a.id=14;
     robot_b.id=7;
+    return 0;
 }
 
 int handleKeypresses() {
@@ -599,12 +602,9 @@ void updateGame() {
 }
 
 int main(int argc, char** argv) {
-    CvMemStorage *storage;
-    CvCapture *capture;
-
     if (initSerial()) return -1;
     if (initUI()) return -1;
-    if (initCV(argc>1 ? argv[1] : NULL, &storage, &capture)) return -1;
+    if (initCV(argc>1 ? argv[1] : NULL)) return -1;
     if (initGame()) return -1;
 
     printf("To initialize coordinate projection, press <i>\n");
@@ -620,11 +620,11 @@ int main(int argc, char** argv) {
         // cvResize( frame, img , CV_INTER_LINEAR );
         IplImage *img = cvCloneImage(frame); // can't modify original
         IplImage *grayscale = filter_image(img);
-        CvSeq *squares = findCandidateSquares( grayscale, storage );
-        drawSquares( img, grayscale, squares );
+        CvSeq *squares = findCandidateSquares(grayscale);
+        drawSquares(img, grayscale, squares);
         cvReleaseImage(&grayscale);
         cvReleaseImage(&img);
-        cvClearMemStorage( storage ); // clear memory storage - reset free space position
+        cvClearMemStorage(storage); // clear memory storage - reset free space position
 
         if (handleKeypresses())
             break;

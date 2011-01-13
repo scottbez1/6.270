@@ -78,22 +78,22 @@ void mouseHandler(int event, int x, int y, int flags, void *param) {
 IplImage *filter_image( IplImage *img ) {
     CvSize sz = cvSize( img->width & -2, img->height & -2 );
 
-    IplImage *timg = cvCloneImage( img ); // make a copy of input image
-    IplImage *pyr = cvCreateImage( cvSize(sz.width/2, sz.height/2), 8, 3 );
+    //IplImage *timg = cvCloneImage( img ); // make a copy of input image
+    //IplImage *pyr = cvCreateImage( cvSize(sz.width/2, sz.height/2), 8, 3 );
     IplImage *tgray;
 
     // select the maximum ROI in the image
     // with the width and height divisible by 2
-    cvSetImageROI( timg, cvRect( 0, 0, sz.width, sz.height ));
+    cvSetImageROI( img, cvRect( 0, 0, sz.width, sz.height ));
 
     // down-scale and upscale the image to filter out the noise
     //cvPyrDown( timg, pyr, 7 );
     //cvPyrUp( pyr, timg, 7 );
     tgray = cvCreateImage( sz, 8, 1 );
 
-    cvCvtColor(timg, tgray, CV_BGR2GRAY);
-    cvReleaseImage( &pyr );
-    cvReleaseImage( &timg );
+    cvCvtColor(img, tgray, CV_BGR2GRAY);
+    //cvReleaseImage( &pyr );
+    //cvReleaseImage( &timg );
 
     return tgray;
 }

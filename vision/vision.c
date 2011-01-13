@@ -363,8 +363,7 @@ void drawSquares( IplImage *img, IplImage *grayscale, CvSeq *squares ) {
                 // use affine approximation and SVD to determine angle
                 theta = atan2(R_mat[1][0], R_mat[0][0]) + best_corner * M_PI/2;
                 cvCircle(cpy, cvPoint(A23_mat[0][2] + (A23_mat[0][0] + A23_mat[0][1])*(l+r)/2 + 100*cos(theta),A23_mat[1][2] + (A23_mat[1][0] + A23_mat[1][1])*(l+r)/2 + 100*sin(theta)), 5, CV_RGB(255,255,255),-1,8,0);
-                sprintf(buffer,"Angle %f",theta);
-                cvPutText(cpy, buffer, cvPoint(center.x-20, center.y-50), &font, CV_RGB(255,255,0));
+                cvPrintf(cpy, cvPoint(center.x-20, center.y-50), CV_RGB(255,255,0), "Angle %f", theta);
             }
 
 
@@ -396,10 +395,9 @@ void drawSquares( IplImage *img, IplImage *grayscale, CvSeq *squares ) {
     }
 
 
-    if (nextMousePoint!=4) {
-        sprintf(buffer, "Init Projection: Click the %s corner", mouseCornerLabel[nextMousePoint]);
-        cvPutText(cpy, buffer, cvPoint(2, 20), &font, cvScalar(0,255,0,0));
-    } else if (projection) {
+    if (nextMousePoint!=4)
+        cvPrintf(cpy, cvPoint(2, 20), CV_RGB(0,255,0), "Init Projection: Click the %s corner", mouseCornerLabel[nextMousePoint]);
+    else if (projection) {
         CvPoint corners[4], *rect = corners;
         int cornerCount = 4;
         for (int i=0; i<4; i++)
@@ -407,8 +405,7 @@ void drawSquares( IplImage *img, IplImage *grayscale, CvSeq *squares ) {
         cvPolyLine(cpy, &rect, &cornerCount, 1, 1, CV_RGB(30,30,200), 2, 8, 0);
     }
 
-    sprintf(buffer,"Score: %i", score);
-    cvPutText(cpy, buffer, cvPoint(5, cpy->height-40), &font, CV_RGB(255,255,0));
+    cvPrintf(cpy, cvPoint(5, cpy->height-40), CV_RGB(255,255,0), "Score: %i", score);
 
     static double last_frame = 0.0;
     static float last_fps = 0.0;
@@ -418,17 +415,18 @@ void drawSquares( IplImage *img, IplImage *grayscale, CvSeq *squares ) {
     fps = (10*last_fps + fps) / 11.;
     last_fps = fps;
 
-    if (matchState == MATCH_ENDED) {
-        sprintf(buffer, "Match ended.  Press <r> to start a new match.  %.1f FPS", fps);
-    } else if (matchState == MATCH_RUNNING) {
-        sprintf(buffer, "Remaining time: 00:%6.3f seconds.  %.1f FPS", MATCH_LEN_SECONDS - (now - matchStartTime), fps);
+    CvPoint textPoint = cvPoint(5, cpy->height-20);
+    CvScalar textColor = CV_RGB(255,255,0);
+    if (matchState == MATCH_ENDED)
+        cvPrintf(cpy, textPoint, textColor, "Match ended.  Press <r> to start a new match.  %.1f FPS", fps);
+    else if (matchState == MATCH_RUNNING) {
+        cvPrintf(cpy, textPoint, textColor, "Remaining time: 00:%6.3f seconds.  %.1f FPS", MATCH_LEN_SECONDS - (now - matchStartTime), fps);
 
         //draw circle at goal
         CvPoint2D32f goalPt = cvPoint2D32f(goal.x, goal.y);
         goalPt = project(invProjection, goalPt);
         cvCircle(cpy, cvPoint(goalPt.x/4, goalPt.y/4), 6, CV_RGB(0,0,255),-1,8,0);
     }
-    cvPutText(cpy, buffer, cvPoint(5, cpy->height-20), &font, CV_RGB(255,255,0));
 
     // show the resultant image
     cvShowImage( WND_MAIN, cpy );
@@ -616,19 +614,18 @@ int main(int argc, char** argv) {
             continue;
         }
 
-        // img = cvCreateImage( cvSize(800, 600), frame->depth, frame->nChannels );
-        // cvResize( frame, img , CV_INTER_LINEAR );
         IplImage *img = cvCloneImage(frame); // can't modify original
         IplImage *grayscale = filter_image(img);
         CvSeq *squares = findCandidateSquares(grayscale);
         drawSquares(img, grayscale, squares);
-        cvReleaseImage(&grayscale);
-        cvReleaseImage(&img);
-        cvClearMemStorage(storage); // clear memory storage - reset free space position
 
         if (handleKeypresses())
             break;
         updateGame();
+
+        cvReleaseImage(&grayscale);
+        cvReleaseImage(&img);
+        cvClearMemStorage(storage); // clear memory storage - reset free space position
     }
 
     cleanupCV();

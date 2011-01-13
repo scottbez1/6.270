@@ -4,7 +4,7 @@ RM = rm
 CFLAGS = -ggdb -std=c99
 CXXFLAGS = -ggdb
 HEADERS = vision.h projection.h serial.h util.h game.h
-ALL_OBJS = projection.o serial.o vid_squares.o util.o
+ALL_OBJS = projection.o serial.o vision.o util.o
 CALIBRATE_OBJS = calibrate.o
 
 UNAME := $(shell uname)

@@ -3,7 +3,7 @@
 
 #include "packet.h"
 
-int serial_open();
+int serial_open(const char *device);
 void serial_close();
 
 void serial_sync();

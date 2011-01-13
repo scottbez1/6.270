@@ -1,20 +1,52 @@
 #include "serial.h"
+#include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 #include <sys/ioctl.h>
+#include <sys/stat.h>
+#include <sys/dirent.h>
+#include <dirent.h>
 #include <fcntl.h>
 #include <termios.h>
 #include <unistd.h>
 
-const char *device = "/dev/tty.usbserial-A800cAPm";
-
+const char *device = 0;
 
 int fd;
 
+#ifndef DARWIN
+#define DEV_NAME "ttyUSB"
+#else
+#define DEV_NAME "tty.usbserial"
+#endif
 
-int serial_open(){
+void findDevice() {
+    printf("Searching /dev/%s*...\n", DEV_NAME);
+    DIR *dirp = opendir(".");
+    struct dirent *dp;
+    while ((dp = readdir(dirp)) != NULL) {
+        if (!strncmp(dp->d_name, DEV_NAME, sizeof(DEV_NAME))) {
+            printf("Using serial device %s\n", dp->d_name);
+            device = strdup(dp->d_name);
+            break;
+        }
+    }
+    closedir(dirp);
+}
+
+int serial_open(const char *ttyDevice){
+    device = ttyDevice;
+    fd = -1;
+    if (!device)
+        findDevice();
+    if (!device) {
+        printf("No serial device.\n");
+        return 0;
+    }
+
     fd = open(device, O_RDWR | O_NOCTTY | O_NDELAY);
     if(fd == -1) {
-        printf( "failed to open port\n" );
+        printf( "Failed to open serial device %s\n", device );
         return 0;
     }
 

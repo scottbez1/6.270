@@ -4,7 +4,7 @@ RM = rm
 MAKE = make
 CFLAGS = -std=c99 $(DEBUG)
 CXXFLAGS = $(DEBUG)
-HEADERS = vision.h projection.h serial.h util.h game.h
+HEADERS = vision.h projection.h serial.h util.h game.h packet.h
 VISION_OBJS = projection.o serial.o vision.o util.o
 CALIBRATE_OBJS = calibrate.o
 

@@ -474,7 +474,7 @@ void *runSerial(void *params){
 }
 
 int initSerial() {
-    if (!serial_open())
+    if (!serial_open(0))
         fprintf(stderr, "Could not open serial port!\n");
     serial_sync();
 

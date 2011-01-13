@@ -2,10 +2,10 @@
 #include <stdio.h>
 #include <sys/ioctl.h>
 #include <fcntl.h>
-#include <termios.h> 
+#include <termios.h>
 #include <unistd.h>
 
-const char *device = "/dev/ttyUSB0";
+const char *device = "/dev/tty.usbserial-A800cAPm";
 
 
 int fd;

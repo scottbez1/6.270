@@ -473,8 +473,8 @@ void *runSerial(void *params){
     }
 }
 
-int initSerial() {
-    if (!serial_open(0))
+int initSerial(const char *device) {
+    if (!serial_open(device))
         fprintf(stderr, "Could not open serial port!\n");
     serial_sync();
 
@@ -600,7 +600,7 @@ void updateGame() {
 }
 
 int main(int argc, char** argv) {
-    if (initSerial()) return -1;
+    if (initSerial(argc>2 ? argv[2] : NULL)) return -1;
     if (initUI()) return -1;
     if (initCV(argc>1 ? argv[1] : NULL)) return -1;
     if (initGame()) return -1;

@@ -5,7 +5,7 @@ MAKE = make
 CFLAGS = -std=c99 $(DEBUG)
 CXXFLAGS = $(DEBUG)
 HEADERS = vision.h projection.h serial.h util.h game.h
-ALL_OBJS = projection.o serial.o vision.o util.o
+VISION_OBJS = projection.o serial.o vision.o util.o
 CALIBRATE_OBJS = calibrate.o
 
 UNAME := $(shell uname)
@@ -27,15 +27,17 @@ CXXFLAGS += -I $(location)/include/opencv/
 %.o : %.cc
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
-all: $(ALL_OBJS)
-	$(CC) $(CFLAGS) $(ALL_OBJS) -o vision -I $(location)/include/opencv/ -L$(location)/lib $(libs)
+all: vision calibrate
+
+vision: $(VISION_OBJS)
+	$(CC) $(CFLAGS) $(VISION_OBJS) -o $@ -I $(location)/include/opencv/ -L$(location)/lib $(libs)
 
 debug:
 	$(MAKE) DEBUG="-ggdb -D DEBUG"
 
 calibrate: $(CALIBRATE_OBJS)
-	$(CXX) $(CXXFLAGS) $(CALIBRATE_OBJS) -o calibrate -L$(location)/lib $(libs)
+	$(CXX) $(CXXFLAGS) $(CALIBRATE_OBJS) -o $@ -L$(location)/lib $(libs)
 
 .PHONY: clean
 clean:
-	$(RM) -r *.o *.dSYM calibrate vision
+	$(RM) -r *.o calibrate vision

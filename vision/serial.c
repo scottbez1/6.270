@@ -50,9 +50,19 @@ int serial_open(const char *ttyDevice){
         return 0;
     }
 
-    struct termios  config;
+    struct termios options;
+    memset(&options,0,sizeof(struct termios));
     if(!isatty(fd)) { printf("error: not a tty!"); return 0;}
-    if(tcgetattr(fd, &config) < 0) { printf("error: couldn't get attr"); return 0;}
+#ifdef DARWIN
+	cfmakeraw(&options);
+	cfsetspeed(&options, 19200);
+	options.c_cflag = CREAD | CLOCAL;
+	options.c_cflag |= CS8;
+	options.c_cc[VMIN] = 0;
+	options.c_cc[VTIME] = 10;
+	ioctl(fd, TIOCSETA, &options);
+#else
+    if(tcgetattr(fd, &options) < 0) { printf("error: couldn't get attr"); return 0;}
     //
     // Input flags - Turn off input processing
     // convert break to null byte, no CR to NL translation,
@@ -60,7 +70,7 @@ int serial_open(const char *ttyDevice){
     // no input parity check, don't strip high bit off,
     // no XON/XOFF software flow control
     //
-    config.c_iflag &= ~(IGNBRK | BRKINT | ICRNL |
+    options.c_iflag &= ~(IGNBRK | BRKINT | ICRNL |
                         INLCR | PARMRK | INPCK | ISTRIP | IXON);
     //
     // Output flags - Turn off output processing
@@ -69,40 +79,41 @@ int serial_open(const char *ttyDevice){
     // no Ctrl-D suppression, no fill characters, no case mapping,
     // no local output processing
     //
-    // config.c_oflag &= ~(OCRNL | ONLCR | ONLRET |
+    // options.c_oflag &= ~(OCRNL | ONLCR | ONLRET |
     //                     ONOCR | ONOEOT| OFILL | OLCUC | OPOST);
-    config.c_oflag = 0;
+    options.c_oflag = 0;
     //
     // No line processing:
-    // echo off, echo newline off, canonical mode off, 
+    // echo off, echo newline off, canonical mode off,
     // extended input processing off, signal chars off
     //
-    config.c_lflag &= ~(ECHO | ECHONL | ICANON | IEXTEN | ISIG);
+    options.c_lflag &= ~(ECHO | ECHONL | ICANON | IEXTEN | ISIG);
     //
     // Turn off character processing
     // clear current char size mask, no parity checking,
     // no output processing, force 8 bit input
     //
-    config.c_cflag &= ~(CSIZE | PARENB);
-    config.c_cflag |= CS8;
+    options.c_cflag &= ~(CSIZE | PARENB);
+    options.c_cflag |= CS8;
     //
     // One input byte is enough to return from read()
     // Inter-character timer off
     //
-    config.c_cc[VMIN]  = 1;
-    config.c_cc[VTIME] = 0;
+    options.c_cc[VMIN]  = 1;
+    options.c_cc[VTIME] = 0;
     //
     // Communication speed (simple version, using the predefined
     // constants)
     //
-    if(cfsetispeed(&config, B19200) < 0 || cfsetospeed(&config, B19200) < 0) {
+    if(cfsetispeed(&options, B19200) < 0 || cfsetospeed(&config, B19200) < 0) {
          printf("error: couldn't set baud!\n");
          return 0;
     }
     //
-    // Finally, apply the configuration
+    // Finally, apply the optionsuration
     //
-    if(tcsetattr(fd, TCSAFLUSH, &config) < 0) { printf("error: couldn't set serial attrs\n"); }
+    if(tcsetattr(fd, TCSAFLUSH, &options) < 0) { printf("error: couldn't set serial attrs\n"); }
+#endif
 
     //write(fd,"A",1);
     return 1;

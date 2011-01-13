@@ -10,16 +10,17 @@ CALIBRATE_OBJS = calibrate.o
 
 UNAME := $(shell uname)
 ifeq ($(UNAME), Linux)
-location=/usr/local
-libs=-lm -lcv -lcxcore -lhighgui -lcvaux
+LOCATION=/usr/local
+LIBS=-lm -lcv -lcxcore -lhighgui -lcvaux
 endif
 ifeq ($(UNAME), Darwin)
-location=/usr
-libs=-lm -lopencv_core -lopencv_highgui -lopencv_imgproc -lopencv_video -lopencv_calib3d
+LOCATION=/usr
+LIBS=-lm -lopencv_core -lopencv_highgui -lopencv_imgproc -lopencv_video -lopencv_calib3d
+CFLAGS += -D DARWIN
 endif
 
-CFLAGS += -I $(location)/include/opencv/
-CXXFLAGS += -I $(location)/include/opencv/
+CFLAGS += -I $(LOCATION)/include/opencv/
+CXXFLAGS += -I $(LOCATION)/include/opencv/
 
 %.o : %.c $(HEADERS)
 	$(CC) $(CFLAGS) -c -o $@ $<
@@ -30,13 +31,13 @@ CXXFLAGS += -I $(location)/include/opencv/
 all: vision calibrate
 
 vision: $(VISION_OBJS)
-	$(CC) $(CFLAGS) $(VISION_OBJS) -o $@ -I $(location)/include/opencv/ -L$(location)/lib $(libs)
+	$(CC) $(CFLAGS) $(VISION_OBJS) -o $@ -I $(LOCATION)/include/opencv/ -L$(LOCATION)/lib $(LIBS)
 
 debug:
 	$(MAKE) DEBUG="-ggdb -D DEBUG"
 
 calibrate: $(CALIBRATE_OBJS)
-	$(CXX) $(CXXFLAGS) $(CALIBRATE_OBJS) -o $@ -L$(location)/lib $(libs)
+	$(CXX) $(CXXFLAGS) $(CALIBRATE_OBJS) -o $@ -L$(LOCATION)/lib $(LIBS)
 
 .PHONY: clean
 clean:

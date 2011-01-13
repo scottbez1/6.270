@@ -154,8 +154,7 @@ CvSeq *findCandidateSquares( IplImage *tgray, CvMemStorage *storage ) {
             // vertices to resultant sequence in clockwise order
             if( s < 0.3 )
                 for( i = 0; i < 4; i++ )
-                    cvSeqPush( squares,
-                            (CvPoint*)cvGetSeqElem( result, 3-i ));
+                    cvSeqPush( squares, (CvPoint*)cvGetSeqElem( result, 3-i ));
         }
 
         // take the next contour
@@ -568,6 +567,37 @@ void cleanupCV() {
         cvReleaseMat(&invProjection);
 }
 
+int initGame() {
+    robot_a.id=14;
+    robot_b.id=7;
+}
+
+int handleKeypresses() {
+    char c = cvWaitKey(5); // cvWaitKey takes care of event processing
+    if( c == 27 )  //ESC
+        return -1;
+    else if ( c == 'i' || (c == 'r' && (!projection || nextMousePoint != 4)))
+        nextMousePoint = 0;
+    else if ( c == 'r' ) {
+        matchStartTime = timeNow(); //set the match start time
+        matchState = MATCH_RUNNING;
+        sendStartPacket = 1; //set flag for start packet to be sent
+        srand(randomGoalSeed); // reseed random
+        goal = cvPoint(X_MIN, Y_MIN); // don't let pickNewGoal choose a point near the start
+        goal = pickNewGoal();
+        score = 0;
+    }
+    return 0;
+}
+
+void updateGame() {
+    double now = timeNow();
+    if ((now - matchStartTime) >= MATCH_LEN_SECONDS)
+        matchState = MATCH_ENDED;
+    else
+        checkGoals();
+}
+
 int main(int argc, char** argv) {
     CvMemStorage *storage;
     CvCapture *capture;
@@ -575,15 +605,12 @@ int main(int argc, char** argv) {
     if (initSerial()) return -1;
     if (initUI()) return -1;
     if (initCV(argc>1 ? argv[1] : NULL, &storage, &capture)) return -1;
-
-    robot_a.id=14;
-    robot_b.id=7;
+    if (initGame()) return -1;
 
     printf("To initialize coordinate projection, press <i>\n");
 
-    IplImage *img = 0, *frame;
     while(1) {
-        frame = cvQueryFrame( capture );
+        IplImage *frame = cvQueryFrame( capture );
         if( !frame ) {
             fprintf(stderr,"cvQueryFrame failed!\n");
             continue;
@@ -591,36 +618,17 @@ int main(int argc, char** argv) {
 
         // img = cvCreateImage( cvSize(800, 600), frame->depth, frame->nChannels );
         // cvResize( frame, img , CV_INTER_LINEAR );
-        img = cvCloneImage(frame); // can't modify original
+        IplImage *img = cvCloneImage(frame); // can't modify original
         IplImage *grayscale = filter_image(img);
-        CvSeq *squares = findCandidateSquares( grayscale, storage ); // find and draw the squares
+        CvSeq *squares = findCandidateSquares( grayscale, storage );
         drawSquares( img, grayscale, squares );
-        cvReleaseImage( &grayscale );
-
-        char c = cvWaitKey(5); // cvWaitKey takes care of event processing
-        double now = timeNow();
-
-        if( c == 27 )  //ESC
-            break;
-        else if ( c == 'i' || (c == 'r' && (!projection || nextMousePoint != 4)))
-            nextMousePoint = 0;
-        else if ( c == 'r' ) {
-            matchStartTime = now; //set the match start time
-            matchState = MATCH_RUNNING;
-            sendStartPacket = 1; //set flag for start packet to be sent
-            srand(randomGoalSeed); // reseed random
-            goal = cvPoint(X_MIN, Y_MIN); // don't let pickNewGoal choose a point near the start
-            goal = pickNewGoal();
-            score = 0;
-        }
-
-        if ((now - matchStartTime) >= MATCH_LEN_SECONDS)
-            matchState = MATCH_ENDED;
-        else
-            checkGoals();
-
-        cvClearMemStorage( storage ); // clear memory storage - reset free space position
+        cvReleaseImage(&grayscale);
         cvReleaseImage(&img);
+        cvClearMemStorage( storage ); // clear memory storage - reset free space position
+
+        if (handleKeypresses())
+            break;
+        updateGame();
     }
 
     cleanupCV();

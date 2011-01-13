@@ -31,7 +31,7 @@ all: $(ALL_OBJS)
 	$(CC) $(CFLAGS) $(ALL_OBJS) -o vision -I $(location)/include/opencv/ -L$(location)/lib $(libs)
 
 debug:
-	$(MAKE) $(MAKEFILE) DEBUG="-ggdb -D DEBUG"
+	$(MAKE) DEBUG="-ggdb -D DEBUG"
 
 calibrate: $(CALIBRATE_OBJS)
 	$(CXX) $(CXXFLAGS) $(CALIBRATE_OBJS) -o calibrate -L$(location)/lib $(libs)

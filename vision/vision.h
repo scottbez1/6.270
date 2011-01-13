@@ -32,6 +32,7 @@
 #include <cv.h>
 #include <highgui.h>
 #include <stdio.h>
+#include <stdarg.h>
 #include <ctype.h>
 #include <math.h>
 #include <string.h>
@@ -50,7 +51,6 @@ typedef struct {
     signed x : 12;
     signed y : 12;
     signed theta : 12;
-    pthread_mutex_t lock;
 } robot_t;
 
 #include "util.h"

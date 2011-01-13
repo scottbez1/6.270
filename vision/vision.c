@@ -7,6 +7,7 @@ int score = 0;
 CvPoint goal;
 robot_t robot_a;
 robot_t robot_b;
+pthread_mutex_t serial_lock;
 
 float bounds[4] = {X_MIN, X_MAX, Y_MIN, Y_MAX};
 
@@ -97,7 +98,7 @@ IplImage *filter_image( IplImage *img ) {
 
 // returns sequence of squares detected on the image.
 // the sequence is stored in the specified memory storage
-CvSeq *findSquares4( IplImage *tgray, CvMemStorage *storage ) {
+CvSeq *findCandidateSquares( IplImage *tgray, CvMemStorage *storage ) {
     CvSeq *contours;
     int i;
     CvSize sz = cvSize( tgray->width & -2, tgray->height & -2 );
@@ -165,10 +166,22 @@ CvSeq *findSquares4( IplImage *tgray, CvMemStorage *storage ) {
     return squares;
 }
 
+int cvPrintf(IplImage *img, CvPoint pt, CvScalar color, const char *format, ...) {
+    static char buffer[2048];
+    va_list ap;
+    int count;
+
+    va_start(ap, format);
+    count = vsnprintf(buffer, 2048, format, ap);
+    va_end(ap);
+
+    cvPutText(img, buffer, pt, &font, color);
+    return count;
+}
+
 // the function draws all the squares in the image
 //TODO: refactor to separate robot detection from drawing
-void drawSquares( IplImage *img, IplImage *grayscale, CvSeq *squares )
-{
+void drawSquares( IplImage *img, IplImage *grayscale, CvSeq *squares ) {
     char buffer[256];
     CvSeqReader reader;
     IplImage *cpy = cvCloneImage( img );
@@ -292,8 +305,7 @@ void drawSquares( IplImage *img, IplImage *grayscale, CvSeq *squares )
             ((bit_true[12] + bit_true[15]) << 12);
 
         //Show the robot's ID next to it
-        sprintf(buffer,"Robot %i",id);
-        cvPutText(cpy, buffer, cvPoint(center.x-20, center.y+50), &font, CV_RGB(255,255,0));
+        cvPrintf(cpy, cvPoint(center.x-20, center.y+50), CV_RGB(255,255,0), "Robot %i", id);
 
         fiducial_t fiducial;
 
@@ -366,11 +378,11 @@ void drawSquares( IplImage *img, IplImage *grayscale, CvSeq *squares )
             }
 
             //store robot coordinates
-            pthread_mutex_lock( &robot->lock);
+            pthread_mutex_lock( &serial_lock);
             robot->x = clamp(center.x, X_MIN, X_MAX);
             robot->y = clamp(center.y, Y_MIN, Y_MAX);
             robot->theta = theta / M_PI * 2048; //change theta from +/- PI to +/-2048 (signed 12 bit int)
-            pthread_mutex_unlock( &robot->lock);
+            pthread_mutex_unlock( &serial_lock);
 
             if (id == 11){
                 printf("X: %04i, Y: %04i, theta: %04i, theta_act: %f, proj_x:%f, proj_y:%f \n", robot->x, robot->y, robot->theta, theta, projected_extension.x, projected_extension.y);
@@ -428,19 +440,17 @@ void *runSerial(void *params){
         position.type = POSITION;
         position.address = 0xFF;
 
-        pthread_mutex_lock( &robot_a.lock );
+        pthread_mutex_lock( &serial_lock );
         position.payload.coords[0].id = robot_a.id;
         position.payload.coords[0].x = robot_a.x;
         position.payload.coords[0].y = robot_a.y;
         position.payload.coords[0].theta = robot_a.theta;
-        pthread_mutex_unlock(&robot_a.lock);
 
-        pthread_mutex_lock( &robot_b.lock );
         position.payload.coords[1].id = robot_b.id;
         position.payload.coords[1].x = robot_b.x;
         position.payload.coords[1].y = robot_b.y;
         position.payload.coords[1].theta = robot_b.theta;
-        pthread_mutex_unlock(&robot_b.lock);
+        pthread_mutex_unlock(&serial_lock);
 
         //put goal position as object 2:
         position.payload.coords[2].id = 100;
@@ -464,58 +474,27 @@ void *runSerial(void *params){
     }
 }
 
-
-int main(int argc, char** argv)
-{
+int initSerial() {
     if (!serial_open())
         fprintf(stderr, "Could not open serial port!\n");
     serial_sync();
 
-    cvInitFont(&font, CV_FONT_HERSHEY_SIMPLEX, 0.5, 0.5, 0, 2, CV_AA);
-    // create memory storage for contours
-    CvMemStorage *storage = cvCreateMemStorage(0);
-
-    CvCapture *capture = 0;
-
-    if( argc == 1 || (argc == 2 && strlen(argv[1]) == 1 && isdigit(argv[1][0])))
-        capture = cvCaptureFromCAM( argc == 2 ? argv[1][0] - '0' : 0 );
-    else if( argc == 2 )
-        capture = cvCaptureFromAVI( argv[1] );
-
-    if( !capture )
-    {
-        fprintf(stderr,"Could not initialize capturing...\n");
-        return -1;
-    }
-
-
     //initialize mutexes
-    pthread_mutex_init(&robot_a.lock, NULL);
-    pthread_mutex_init(&robot_b.lock, NULL);
+    pthread_mutex_init(&serial_lock, NULL);
 
-    robot_a.id=14;
-    robot_b.id=7;
+    //start the serial comm thread
+    pthread_t serialThread;
+    pthread_create( &serialThread, NULL, &runSerial, NULL);
 
-    /*
-    //setup camera properties
-    cvSetCaptureProperty(capture, CV_CAP_PROP_BRIGHTNESS, 0.75);
-    cvSetCaptureProperty(capture, CV_CAP_PROP_CONTRAST, 100);
-    cvSetCaptureProperty(capture, CV_CAP_PROP_SATURATION, 0);
-    cvSetCaptureProperty(capture, CV_CAP_PROP_BRIGHTNESS, 0.25);
-    cvSetCaptureProperty(capture, CV_CAP_PROP_EXPOSURE, 0.2);
-    cvSetCaptureProperty(capture, CV_CAP_PROP_GAIN, 0);
+    return 0;
+}
 
-    //printf("PROPERTY: %f\n",cvGetCaptureProperty( capture, CV_CAP_PROP_MODE ));
-    */
+void cleanupSerial() {
+    serial_close();
+}
 
-    cvSetCaptureProperty( capture, CV_CAP_PROP_FRAME_WIDTH, 960);
-    cvSetCaptureProperty( capture, CV_CAP_PROP_FRAME_HEIGHT, 720);
-    float frameWidth = cvGetCaptureProperty(capture,CV_CAP_PROP_FRAME_WIDTH);
-    float frameHeight = cvGetCaptureProperty(capture,CV_CAP_PROP_FRAME_HEIGHT);
-    printf("%f, %f\n", frameWidth, frameHeight);
-    min_area *= (frameWidth*frameWidth)/(1000*1000);
-    max_area *= (frameWidth*frameWidth)/(1000*1000);
-
+int initUI() {
+    cvInitFont(&font, CV_FONT_HERSHEY_SIMPLEX, 0.5, 0.5, 0, 2, CV_AA);
     cvNamedWindow( WND_MAIN, 1 );
     cvNamedWindow( WND_CONTROLS, 1);
     cvResizeWindow( WND_CONTROLS, 200, 400);
@@ -528,44 +507,99 @@ int main(int argc, char** argv)
     cvCreateTrackbar( TRK_MAX_AREA, WND_CONTROLS, &max_area, 10000, NULL);
     cvCreateTrackbar( TRK_ROBOT_A_ID, WND_CONTROLS, &robot_a.id, MAX_ROBOT_ID-1, NULL);
     cvCreateTrackbar( TRK_ROBOT_B_ID, WND_CONTROLS, &robot_b.id, MAX_ROBOT_ID-1, NULL);
-
     cvCreateTrackbar( TRK_RAND_GOAL_SEED, WND_CONTROLS, &randomGoalSeed, 5000, NULL);
 
-    //setup mouse handler
     cvSetMouseCallback(WND_MAIN,mouseHandler, NULL);
+
+    return 0;
+}
+
+void cleanupUI() {
+    cvDestroyWindow( WND_MAIN);
+}
+
+int initCV(char *source, CvMemStorage **storage, CvCapture **capture) {
+    // create memory storage for contours
+    *storage = cvCreateMemStorage(0);
+
+    *capture = 0;
+
+    int i = 0;
+    if (source && sscanf(source, "%d", &i) != 1)
+        i = -1;
+
+    if (i!=-1)
+        *capture = cvCaptureFromCAM(i);
+    else if (source)
+        *capture = cvCaptureFromAVI( source );
+
+    if( !*capture ) {
+        fprintf(stderr,"Could not initialize capturing...\n");
+        return -1;
+    }
+
+    /*
+    //setup camera properties
+    cvSetCaptureProperty(*capture, CV_CAP_PROP_BRIGHTNESS, 0.75);
+    cvSetCaptureProperty(*capture, CV_CAP_PROP_CONTRAST, 100);
+    cvSetCaptureProperty(*capture, CV_CAP_PROP_SATURATION, 0);
+    cvSetCaptureProperty(*capture, CV_CAP_PROP_BRIGHTNESS, 0.25);
+    cvSetCaptureProperty(*capture, CV_CAP_PROP_EXPOSURE, 0.2);
+    cvSetCaptureProperty(*capture, CV_CAP_PROP_GAIN, 0);
+
+    //printf("PROPERTY: %f\n",cvGetCaptureProperty( *capture, CV_CAP_PROP_MODE ));
+    */
+
+    cvSetCaptureProperty( *capture, CV_CAP_PROP_FRAME_WIDTH, 960);
+    cvSetCaptureProperty( *capture, CV_CAP_PROP_FRAME_HEIGHT, 720);
+    float frameWidth = cvGetCaptureProperty(*capture,CV_CAP_PROP_FRAME_WIDTH);
+    float frameHeight = cvGetCaptureProperty(*capture,CV_CAP_PROP_FRAME_HEIGHT);
+    printf("%f, %f\n", frameWidth, frameHeight);
+    min_area *= (frameWidth*frameWidth)/(1000*1000);
+    max_area *= (frameWidth*frameWidth)/(1000*1000);
+
+    return 0;
+}
+
+void cleanupCV() {
+    if (projection)
+        cvReleaseMat(&projection);
+    if (invProjection)
+        cvReleaseMat(&invProjection);
+}
+
+int main(int argc, char** argv) {
+    CvMemStorage *storage;
+    CvCapture *capture;
+
+    if (initSerial()) return -1;
+    if (initUI()) return -1;
+    if (initCV(argc>1 ? argv[1] : NULL, &storage, &capture)) return -1;
+
+    robot_a.id=14;
+    robot_b.id=7;
 
     printf("To initialize coordinate projection, press <i>\n");
 
-    //start the serial comm thread
-    pthread_t serialThread;
-    pthread_create( &serialThread, NULL, &runSerial, NULL);
-
-
-    IplImage *img = 0;
-    while(1){
-        IplImage *frame = 0;
-
+    IplImage *img = 0, *frame;
+    while(1) {
         frame = cvQueryFrame( capture );
-        if( !frame ){
+        if( !frame ) {
             fprintf(stderr,"cvQueryFrame failed!\n");
             continue;
-            break;
         }
 
         // img = cvCreateImage( cvSize(800, 600), frame->depth, frame->nChannels );
         // cvResize( frame, img , CV_INTER_LINEAR );
-        img = cvCloneImage(frame);
+        img = cvCloneImage(frame); // can't modify original
         IplImage *grayscale = filter_image(img);
-        CvSeq *squares = findSquares4( grayscale, storage ); // find and draw the squares
+        CvSeq *squares = findCandidateSquares( grayscale, storage ); // find and draw the squares
         drawSquares( img, grayscale, squares );
         cvReleaseImage( &grayscale );
 
-        // Also the function cvWaitKey takes care of event processing
-        char c = cvWaitKey(5);
-        cvReleaseImage( &img );
-        cvClearMemStorage( storage ); // clear memory storage - reset free space position
-
+        char c = cvWaitKey(5); // cvWaitKey takes care of event processing
         double now = timeNow();
+
         if( c == 27 )  //ESC
             break;
         else if ( c == 'i' || (c == 'r' && (!projection || nextMousePoint != 4)))
@@ -585,17 +619,13 @@ int main(int argc, char** argv)
         else
             checkGoals();
 
+        cvClearMemStorage( storage ); // clear memory storage - reset free space position
         cvReleaseImage(&img);
     }
 
-    if (projection)
-        cvReleaseMat(&projection);
-    if (invProjection)
-        cvReleaseMat(&invProjection);
-
-    cvDestroyWindow( WND_MAIN);
-
-    serial_close();
+    cleanupCV();
+    cleanupUI();
+    cleanupSerial();
 
     return 0;
 }

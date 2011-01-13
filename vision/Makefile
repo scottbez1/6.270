@@ -7,6 +7,7 @@ CXXFLAGS = $(DEBUG)
 HEADERS = vision.h projection.h serial.h util.h game.h packet.h
 VISION_OBJS = projection.o serial.o vision.o util.o
 CALIBRATE_OBJS = calibrate.o
+OUTPUTS = vision calibrate
 
 UNAME := $(shell uname)
 ifeq ($(UNAME), Linux)
@@ -28,7 +29,7 @@ CXXFLAGS += -I $(LOCATION)/include/opencv/
 %.o : %.cc
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
-all: vision calibrate
+all: $(OUTPUTS)
 
 vision: $(VISION_OBJS)
 	$(CC) $(CFLAGS) $(VISION_OBJS) -o $@ -I $(LOCATION)/include/opencv/ -L$(LOCATION)/lib $(LIBS)
@@ -41,4 +42,4 @@ calibrate: $(CALIBRATE_OBJS)
 
 .PHONY: clean
 clean:
-	$(RM) -r *.o calibrate vision
+	$(RM) -r *.o $(OUTPUTS)

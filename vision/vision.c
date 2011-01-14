@@ -23,6 +23,8 @@ const char *TRK_MAX_AREA = "Max square area";
 const char *TRK_ROBOT_A_ID = "Robot A id";
 const char *TRK_ROBOT_B_ID = "Robot B id";
 const char *TRK_RAND_GOAL_SEED = "Random goal seed";
+const char *TRK_CANNY_THRESHOLD = "Canny upper threshold";
+const char *TRK_HOUGH_VOTES = "Minimum Hough votes";
 
 const char *mouseCornerLabel[4] = {"TOP LEFT", "TOP RIGHT", "BOTTOM RIGHT", "BOTTOM LEFT"};
 
@@ -31,6 +33,8 @@ int randomGoalSeed = 1337;
 int side_tolerance = 50;
 int min_area = 800; // ~ square of (fraction of frame width in 1/1000s)
 int max_area = 5800; // will be corrected for resolution
+int canny_threshold = 20;
+int hough_votes = 80;
 
 CvFont font;
 CvMemStorage *storage;
@@ -70,6 +74,8 @@ void mouseHandler(int event, int x, int y, int flags, void *param) {
         projectionPoints[nextMousePoint++] = point;
         if (nextMousePoint == 4) {
             projection_init(&projection, &invProjection, projectionPoints, bounds);
+            CvMat matrix = cvMat(4,1,CV_32FC2,projectionPoints);
+            cvSave( "Projection.xml", &matrix, 0, 0, cvAttrList(0, 0) );
             printf("project init %s\n", (projection && invProjection) ? "succeeded" : "failed");
         }
     }
@@ -194,28 +200,28 @@ int cvPrintf(IplImage *img, CvPoint pt, CvScalar color, const char *format, ...)
     return count;
 }
 
-void drawSquare(IplImage *img, CvPoint pt[4], CvPoint2D32f bit_pt_true[16], int id, CvPoint2D32f orientationHandle) {
+void drawSquare(IplImage *out, CvPoint pt[4], CvPoint2D32f bit_pt_true[16], int id, CvPoint2D32f orientationHandle) {
     // draw the square as a closed polyline
     CvPoint *rect = pt;
     int count = 4;
-    cvPolyLine(img, &rect, &count, 1, 1, CV_RGB(0,0,255), 2, CV_AA, 0 );
+    cvPolyLine(out, &rect, &count, 1, 1, CV_RGB(0,0,255), 2, CV_AA, 0 );
 
     if (id != -1) {
         // for debugging, draw a dot over each bit location
-        cvCircle(img, cvPoint(bit_pt_true[5].x, bit_pt_true[5].y), 3, CV_RGB(255,0,0),-1,8,0);
-        cvCircle(img, cvPoint(bit_pt_true[6].x, bit_pt_true[6].y), 3, CV_RGB(0,255,0),-1,8,0);
-        cvCircle(img, cvPoint(bit_pt_true[9].x, bit_pt_true[9].y), 3, CV_RGB(0,0,255),-1,8,0);
-        cvCircle(img, cvPoint(bit_pt_true[10].x, bit_pt_true[10].y), 3, CV_RGB(255,0,255),-1,8,0);
+        cvCircle(out, cvPoint(bit_pt_true[5].x*8, bit_pt_true[5].y*8), 3*8, CV_RGB(255,0,0),-1,CV_AA,3);
+        cvCircle(out, cvPoint(bit_pt_true[6].x*8, bit_pt_true[6].y*8), 3*8, CV_RGB(0,255,0),-1,CV_AA,3);
+        cvCircle(out, cvPoint(bit_pt_true[9].x*8, bit_pt_true[9].y*8), 3*8, CV_RGB(0,0,255),-1,CV_AA,3);
+        cvCircle(out, cvPoint(bit_pt_true[10].x*8, bit_pt_true[10].y*8), 3*8, CV_RGB(255,0,255),-1,CV_AA,3);
 
         // Show the robot's ID next to it
         CvPoint center = cvPoint((pt[0].x + pt[1].x + pt[2].x + pt[3].x)/4,(pt[0].y + pt[1].y + pt[2].y + pt[3].y)/4);
-        cvPrintf(img, cvPoint(center.x-20, center.y+50), CV_RGB(255,255,0), "Robot %i", id);
+        cvPrintf(out, cvPoint(center.x-20, center.y+50), CV_RGB(255,255,0), "Robot %i", id);
 
         // draw a white circle at the extended point
-        cvCircle(img, cvPoint(orientationHandle.x,orientationHandle.y), 5, CV_RGB(255,255,255),-1,8,0);
+        cvCircle(out, cvPoint(orientationHandle.x*8,orientationHandle.y*8), 5*8, CV_RGB(255,255,255),-1,CV_AA,3);
 
         //make a dot in the registration corner
-        cvCircle(img, cvPoint(bit_pt_true[0].x, bit_pt_true[0].y), 6, CV_RGB(255,0,0),-1,8,0);
+        cvCircle(out, cvPoint(bit_pt_true[0].x*8, bit_pt_true[0].y*8), 6*8, CV_RGB(255,0,0),-1,CV_AA,3);
     }
 }
 
@@ -387,11 +393,11 @@ void processRobotDetection(CvPoint2D32f trueCenter, float theta, int id, CvPoint
     robot->theta = theta / M_PI * 2048; //change theta from +/- PI to +/-2048 (signed 12 bit int)
     pthread_mutex_unlock( &serial_lock);
 
-    if (id == 11)
+    if (0)
         printf("X: %04i, Y: %04i, theta: %04i, theta_act: %f, proj_x:%f, proj_y:%f \n", robot->x, robot->y, robot->theta, theta, orientationHandle->x, orientationHandle->y);
 }
 
-void updateHUD(IplImage *img) {
+void updateHUD(IplImage *out) {
     static double last_frame = 0.0;
     static float last_fps = 0.0;
     double now = timeNow();
@@ -401,35 +407,34 @@ void updateHUD(IplImage *img) {
     last_fps = fps;
 
     if (nextMousePoint!=4)
-        cvPrintf(img, cvPoint(2, 20), CV_RGB(0,255,0), "Init Projection: Click the %s corner", mouseCornerLabel[nextMousePoint]);
+        cvPrintf(out, cvPoint(2, 20), CV_RGB(0,255,0), "Init Projection: Click the %s corner", mouseCornerLabel[nextMousePoint]);
     else if (projection) {
         CvPoint corners[4], *rect = corners;
         int cornerCount = 4;
         for (int i=0; i<4; i++)
-            corners[i] = cvPoint(projectionPoints[i].x, projectionPoints[i].y);
-        cvPolyLine(img, &rect, &cornerCount, 1, 1, CV_RGB(30,30,200), 2, 8, 0);
+            corners[i] = cvPoint(projectionPoints[i].x*8, projectionPoints[i].y*8);
+        cvPolyLine(out, &rect, &cornerCount, 1, 1, CV_RGB(30,30,200), 2, CV_AA, 3);
     }
 
-    cvPrintf(img, cvPoint(5, img->height-40), CV_RGB(255,255,0), "Score: %i", score);
+    cvPrintf(out, cvPoint(5, out->height-40), CV_RGB(255,255,0), "Score: %i", score);
 
-    CvPoint textPoint = cvPoint(5, img->height-20);
+    CvPoint textPoint = cvPoint(5, out->height-20);
     CvScalar textColor = CV_RGB(255,255,0);
     if (matchState == MATCH_ENDED)
-        cvPrintf(img, textPoint, textColor, "Match ended.  Press <r> to start a new match.  %.1f FPS", fps);
+        cvPrintf(out, textPoint, textColor, "Match ended.  Press <r> to start a new match.  %.1f FPS", fps);
     else if (matchState == MATCH_RUNNING) {
-        cvPrintf(img, textPoint, textColor, "Remaining time: 00:%6.3f seconds.  %.1f FPS", MATCH_LEN_SECONDS - (now - matchStartTime), fps);
+        cvPrintf(out, textPoint, textColor, "Remaining time: 00:%6.3f seconds.  %.1f FPS", MATCH_LEN_SECONDS - (now - matchStartTime), fps);
 
         //draw circle at goal
         CvPoint2D32f goalPt = cvPoint2D32f(goal.x, goal.y);
         goalPt = project(invProjection, goalPt);
-        cvCircle(img, cvPoint(goalPt.x, goalPt.y), 6, CV_RGB(0,0,255),-1,8,0);
+        cvCircle(out, cvPoint(goalPt.x*8, goalPt.y*8), 6*8, CV_RGB(0,0,255),-1,CV_AA,3);
     }
 }
 
 // detects robots and draws the HUD
-void processSquares( IplImage *img, IplImage *grayscale, CvSeq *squares ) {
+void processSquares( IplImage *img, IplImage *out, IplImage *grayscale, CvSeq *squares ) {
     CvSeqReader reader;
-    IplImage *cpy = cvCloneImage( img );
 
     CvPoint pt[4];
     CvPoint2D32f bit_pt_true[16], trueCenter, orientationHandle;
@@ -453,14 +458,29 @@ void processSquares( IplImage *img, IplImage *grayscale, CvSeq *squares ) {
             theta = getThetaFromExtension(bit_pt_true, trueCenter);
         processRobotDetection(trueCenter, theta, id, &orientationHandle);
 
-        drawSquare(cpy, pt, bit_pt_true, id, orientationHandle);
+        drawSquare(out, pt, bit_pt_true, id, orientationHandle);
     }
 
-    updateHUD(cpy);
+    updateHUD(out);
+}
 
-    // show the resultant image
-    cvShowImage( WND_MAIN, cpy );
-    cvReleaseImage( &cpy );
+typedef struct {
+    float x, y, r;
+} circle_t;
+
+void processCircles( IplImage *img, IplImage *out, CvSeq *circles ) {
+    CvSeqReader reader;
+
+    circle_t *circle;
+
+    // initialize reader of the sequence
+    cvStartReadSeq( circles, &reader, 0 );
+    // read 4 sequence elements at a time (all vertices of a square)
+    for(int i=0; i<circles->total; i++) {
+        circle = (circle_t *)cvGetSeqElem(circles, i);
+        cvCircle(out, cvPoint(circle->x*8, circle->y*8), circle->r*8, CV_RGB(255,0,0), 2, 8, 3);
+        printf("Circle %.0f, %.0f, %.0f\n", circle->x, circle->y, circle->r);
+    }
 }
 
 void *runSerial(void *params){
@@ -522,6 +542,12 @@ void cleanupSerial() {
     serial_close();
 }
 
+void preserveValues(int id) {
+    int params[9] = {threshold, side_tolerance, min_area, max_area, robot_a.id, robot_b.id, randomGoalSeed, canny_threshold, hough_votes};
+    CvMat matrix = cvMat(9,1,CV_32SC1,params);
+    cvSave( "Params.xml", &matrix, 0, 0, cvAttrList(0, 0) );
+}
+
 int initUI() {
     cvInitFont(&font, CV_FONT_HERSHEY_SIMPLEX, 0.5, 0.5, 0, 2, CV_AA);
     cvNamedWindow( WND_MAIN, 1 );
@@ -530,13 +556,15 @@ int initUI() {
 #if SHOW_FILTERED_OUTPUT
     cvNamedWindow( WND_FILTERED, CV_WINDOW_AUTOSIZE);
 #endif
-    cvCreateTrackbar( TRK_THRESHOLD, WND_CONTROLS, &threshold, 255, NULL);
-    cvCreateTrackbar( TRK_TOLERANCE, WND_CONTROLS, &side_tolerance, 300, NULL);
-    cvCreateTrackbar( TRK_MIN_AREA, WND_CONTROLS, &min_area, 10000, NULL);
-    cvCreateTrackbar( TRK_MAX_AREA, WND_CONTROLS, &max_area, 10000, NULL);
-    cvCreateTrackbar( TRK_ROBOT_A_ID, WND_CONTROLS, &robot_a.id, MAX_ROBOT_ID-1, NULL);
-    cvCreateTrackbar( TRK_ROBOT_B_ID, WND_CONTROLS, &robot_b.id, MAX_ROBOT_ID-1, NULL);
-    cvCreateTrackbar( TRK_RAND_GOAL_SEED, WND_CONTROLS, &randomGoalSeed, 5000, NULL);
+    cvCreateTrackbar( TRK_THRESHOLD, WND_CONTROLS, &threshold, 255, &preserveValues);
+    cvCreateTrackbar( TRK_TOLERANCE, WND_CONTROLS, &side_tolerance, 300, &preserveValues);
+    cvCreateTrackbar( TRK_MIN_AREA, WND_CONTROLS, &min_area, 10000, &preserveValues);
+    cvCreateTrackbar( TRK_MAX_AREA, WND_CONTROLS, &max_area, 10000, &preserveValues);
+    cvCreateTrackbar( TRK_ROBOT_A_ID, WND_CONTROLS, &robot_a.id, MAX_ROBOT_ID-1, &preserveValues);
+    cvCreateTrackbar( TRK_ROBOT_B_ID, WND_CONTROLS, &robot_b.id, MAX_ROBOT_ID-1, &preserveValues);
+    cvCreateTrackbar( TRK_RAND_GOAL_SEED, WND_CONTROLS, &randomGoalSeed, 5000, &preserveValues);
+    cvCreateTrackbar( TRK_CANNY_THRESHOLD, WND_CONTROLS, &canny_threshold, 255, &preserveValues);
+    cvCreateTrackbar( TRK_HOUGH_VOTES, WND_CONTROLS, &hough_votes, 100, &preserveValues);
 
     cvSetMouseCallback(WND_MAIN,mouseHandler, NULL);
 
@@ -645,6 +673,25 @@ int main(int argc, char** argv) {
     projectionPoints[1] = cvPoint2D32f(frameWidth, 0);
     projectionPoints[2] = cvPoint2D32f(frameWidth, frameHeight);
     projectionPoints[3] = cvPoint2D32f(0, frameHeight);
+	CvMat *projPts = (CvMat*)cvLoad( "Projection.xml", 0, 0, 0);
+	CvMat *params = (CvMat*)cvLoad( "Params.xml", 0, 0, 0);
+    if (projPts) {
+        for (int i=0; i<4; i++)
+            projectionPoints[i] = CV_MAT_ELEM(*projPts, CvPoint2D32f, i, 0);
+    }
+    if (params && params->rows == 9 && params->rows == 1) {
+        threshold = CV_MAT_ELEM(*params, int, 0, 0);
+        side_tolerance = CV_MAT_ELEM(*params, int, 0, 0);
+        min_area = CV_MAT_ELEM(*params, int, 0, 0);
+        max_area = CV_MAT_ELEM(*params, int, 0, 0);
+        robot_a.id = CV_MAT_ELEM(*params, int, 0, 0);
+        robot_b.id = CV_MAT_ELEM(*params, int, 0, 0);
+        randomGoalSeed = CV_MAT_ELEM(*params, int, 0, 0);
+        canny_threshold = CV_MAT_ELEM(*params, int, 0, 0);
+        hough_votes = CV_MAT_ELEM(*params, int, 0, 0);
+    }
+    cvReleaseMat(&projPts);
+
     projection_init(&projection, &invProjection, projectionPoints, bounds);
     while(1) {
         IplImage *frame = cvQueryFrame( capture );
@@ -654,13 +701,35 @@ int main(int argc, char** argv) {
         }
 
         IplImage *img = cvCloneImage(frame); // can't modify original
+        IplImage *out = cvCloneImage( img );
+
         IplImage *grayscale = filter_image(img);
         CvSeq *squares = findCandidateSquares(grayscale);
-        processSquares(img, grayscale, squares);
+        processSquares(img, out, grayscale, squares);
+
+        float radius_coords = FOOT * 1.68 * .5 / 12.; // golf ball
+        CvPoint2D32f pt[2] = {cvPoint2D32f(0, 0), cvPoint2D32f(radius_coords, 0)};
+        pt[0] = project(invProjection, pt[0]);
+        pt[1] = project(invProjection, pt[1]);
+        float dx = pt[1].x - pt[0].x;
+        float dy = pt[1].y - pt[0].y;
+        float radius_raw = sqrt(dx*dx+dy*dy);
+        if (hough_votes == 0)
+            hough_votes = 1;
+        float param2 = hough_votes*radius_raw/100.0;
+        if (param2== 0)
+            canny_threshold = 1;
+        CvSeq *circles = cvHoughCircles(grayscale, storage, CV_HOUGH_GRADIENT, 2, 1.9*radius_raw, 110, 10, 0.8*radius_raw, 1.2*radius_raw);
+
+        processCircles(img, out, circles);
 
         if (handleKeypresses())
             break;
         updateGame();
+
+        // show the resultant image
+        cvShowImage( WND_MAIN, out );
+        cvReleaseImage( &out );
 
         cvReleaseImage(&grayscale);
         cvReleaseImage(&img);

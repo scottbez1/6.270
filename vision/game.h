@@ -11,11 +11,11 @@
 #define X_MAX 2047
 
 #define Y_MIN -2048
-#define Y_MAX 2047
+#define Y_MAX 0
 
 #define FOOT 512.0
 
-#define GOAL_TOLERANCE 50
+#define GOAL_TOLERANCE (FOOT/6.)
 
 #define MAX_ROBOT_ID 12288
 

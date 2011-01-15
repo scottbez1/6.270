@@ -4,7 +4,6 @@
 #include <string.h>
 #include <sys/ioctl.h>
 #include <sys/stat.h>
-#include <sys/dirent.h>
 #include <dirent.h>
 #include <fcntl.h>
 #include <termios.h>
@@ -27,7 +26,8 @@ void findDevice() {
     while ((dp = readdir(dirp)) != NULL) {
         if (!strncmp(dp->d_name, DEV_NAME, sizeof(DEV_NAME))) {
             printf("Using serial device %s\n", dp->d_name);
-            device = strdup(dp->d_name);
+            // apparently Linux fails at strdup
+            device = (const char*)strcpy((char*)malloc(strlen(dp->d_name)+1), dp->d_name);
             break;
         }
     }

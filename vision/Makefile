@@ -13,6 +13,7 @@ UNAME := $(shell uname)
 ifeq ($(UNAME), Linux)
 LOCATION=/usr/local
 LIBS=-lm -lcv -lcxcore -lhighgui -lcvaux
+CFLAGS += -D LINUX
 endif
 ifeq ($(UNAME), Darwin)
 LOCATION=/usr

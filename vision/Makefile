@@ -7,7 +7,8 @@ CXXFLAGS = $(DEBUG)
 HEADERS = vision.h projection.h serial.h util.h game.h packet.h
 VISION_OBJS = projection.o serial.o vision.o util.o
 CALIBRATE_OBJS = calibrate.o
-OUTPUTS = vision calibrate
+CIRCLEDETECT_OBJS = circledetect.o
+OUTPUTS = vision calibrate circledetect
 
 UNAME := $(shell uname)
 ifeq ($(UNAME), Linux)
@@ -34,6 +35,9 @@ all: $(OUTPUTS)
 
 vision: $(VISION_OBJS)
 	$(CC) $(CFLAGS) $(VISION_OBJS) -o $@ -I $(LOCATION)/include/opencv/ -L$(LOCATION)/lib $(LIBS)
+
+circledetect: $(CIRCLEDETECT_OBJS)
+	$(CC) $(CFLAGS) $(CIRCLEDETECT_OBJS) -o $@ -I $(LOCATION)/include/opencv/ -L$(LOCATION)/lib $(LIBS)
 
 debug:
 	$(MAKE) DEBUG="-ggdb -D DEBUG"

@@ -24,6 +24,8 @@ const char *TRK_ROBOT_A_ID = "Robot A id";
 const char *TRK_ROBOT_B_ID = "Robot B id";
 const char *TRK_RAND_GOAL_SEED = "Random goal seed";
 const char *TRK_CANNY_THRESHOLD = "Canny upper threshold";
+const char *TRK_MIN_RADIUS = "Min radius";
+const char *TRK_MAX_RADIUS = "Max radius";
 const char *TRK_HOUGH_VOTES = "Minimum Hough votes";
 
 const char *mouseCornerLabel[4] = {"TOP LEFT", "TOP RIGHT", "BOTTOM RIGHT", "BOTTOM LEFT"};
@@ -35,6 +37,8 @@ int min_area = 800; // ~ square of (fraction of frame width in 1/1000s)
 int max_area = 5800; // will be corrected for resolution
 int canny_threshold = 20;
 int hough_votes = 80;
+int min_radius = 100;
+int max_radius = 200;
 
 CvFont font;
 CvMemStorage *storage;
@@ -565,6 +569,8 @@ int initUI() {
     cvCreateTrackbar( TRK_RAND_GOAL_SEED, WND_CONTROLS, &randomGoalSeed, 5000, &preserveValues);
     cvCreateTrackbar( TRK_CANNY_THRESHOLD, WND_CONTROLS, &canny_threshold, 255, &preserveValues);
     cvCreateTrackbar( TRK_HOUGH_VOTES, WND_CONTROLS, &hough_votes, 100, &preserveValues);
+    cvCreateTrackbar( TRK_MIN_RADIUS, WND_CONTROLS, &min_radius, 800, NULL);
+    cvCreateTrackbar( TRK_MAX_RADIUS, WND_CONTROLS, &max_radius, 800, NULL);
 
     cvSetMouseCallback(WND_MAIN,mouseHandler, NULL);
 
@@ -719,7 +725,9 @@ int main(int argc, char** argv) {
         float param2 = hough_votes*radius_raw/100.0;
         if (param2== 0)
             canny_threshold = 1;
-        CvSeq *circles = cvHoughCircles(grayscale, storage, CV_HOUGH_GRADIENT, 2, 1.9*radius_raw, 110, 10, 0.8*radius_raw, 1.2*radius_raw);
+
+
+        CvSeq *circles = cvHoughCircles(grayscale, storage, CV_HOUGH_GRADIENT, 2, grayscale->height/4, canny_threshold, 100, min_radius, max_radius);
 
         processCircles(img, out, circles);
 

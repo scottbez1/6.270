@@ -1,2 +1,4 @@
 vid_squares
 vision
+*.xml
+circledetect

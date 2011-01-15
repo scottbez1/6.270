@@ -62,4 +62,8 @@ typedef struct {
 #define BR 2
 #define BL 3
 
+#ifndef M_PI
+#define M_PI CV_PI
+#endif
+
 #endif

@@ -105,7 +105,7 @@ int serial_open(const char *ttyDevice){
     // Communication speed (simple version, using the predefined
     // constants)
     //
-    if(cfsetispeed(&options, B19200) < 0 || cfsetospeed(&config, B19200) < 0) {
+    if(cfsetispeed(&options, B19200) < 0 || cfsetospeed(&options, B19200) < 0) {
          printf("error: couldn't set baud!\n");
          return 0;
     }
@@ -135,7 +135,6 @@ void serial_send_packet(packet_buffer* packet){
     uint8_t len = sizeof(packet_buffer);
     write(fd, &len, 1);
     write(fd, packet, sizeof(packet_buffer));
-    usleep(20000);
 }
 
 void serial_send_str(char *msg, int num_bytes){

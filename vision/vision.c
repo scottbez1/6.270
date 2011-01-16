@@ -28,7 +28,14 @@ const char *TRK_MIN_RADIUS = "Min radius";
 const char *TRK_MAX_RADIUS = "Max radius";
 const char *TRK_HOUGH_VOTES = "Minimum Hough votes";
 
-const char *mouseCornerLabel[4] = {"TOP LEFT", "TOP RIGHT", "BOTTOM RIGHT", "BOTTOM LEFT"};
+enum {
+    PICK_PROJECTION_CORNERS,
+    PICK_SAMPLE_CORNERS
+} mouseOperation = PICK_PROJECTION_CORNERS;
+int nextMousePoint = 4;
+
+const char *mouseCornerLabel[] = {"TOP LEFT", "TOP RIGHT", "BOTTOM RIGHT", "BOTTOM LEFT"};
+const char *mouseOperationLabel[] = {"Init Projection", "Sample Colors"};
 
 int threshold = 100;
 int randomGoalSeed = 1337;
@@ -70,17 +77,30 @@ CvMat *projection;
 CvMat *invProjection;
 
 CvPoint2D32f projectionPoints[4];
+CvPoint2D32f sampleCorners[4];
+int sampleColors = 0;
 
-int nextMousePoint = 4;
 void mouseHandler(int event, int x, int y, int flags, void *param) {
     CvPoint2D32f point = cvPoint2D32f(x,y);
     if (event == CV_EVENT_LBUTTONDOWN && nextMousePoint < 4) {
-        projectionPoints[nextMousePoint++] = point;
+        CvPoint2D32f *arr;
+        if (mouseOperation == PICK_PROJECTION_CORNERS)
+            arr = projectionPoints;
+        else if (mouseOperation == PICK_SAMPLE_CORNERS)
+            arr = sampleCorners;
+        arr[nextMousePoint++] = point;
         if (nextMousePoint == 4) {
-            projection_init(&projection, &invProjection, projectionPoints, bounds);
-            CvMat matrix = cvMat(4,1,CV_32FC2,projectionPoints);
-            cvSave( "Projection.xml", &matrix, 0, 0, cvAttrList(0, 0) );
-            printf("project init %s\n", (projection && invProjection) ? "succeeded" : "failed");
+            switch (mouseOperation) {
+                case PICK_PROJECTION_CORNERS:
+                    projection_init(&projection, &invProjection, projectionPoints, bounds);
+                    CvMat matrix = cvMat(4,1,CV_32FC2,projectionPoints);
+                    cvSave( "Projection.xml", &matrix, 0, 0, cvAttrList(0, 0) );
+                    printf("project init %s\n", (projection && invProjection) ? "succeeded" : "failed");
+                    break;
+                case PICK_SAMPLE_CORNERS:
+                    sampleColors = 1;
+                    break;
+            }
         }
     }
 }
@@ -411,8 +431,8 @@ void updateHUD(IplImage *out) {
     last_fps = fps;
 
     if (nextMousePoint!=4)
-        cvPrintf(out, cvPoint(2, 20), CV_RGB(0,255,0), "Init Projection: Click the %s corner", mouseCornerLabel[nextMousePoint]);
-    else if (projection) {
+        cvPrintf(out, cvPoint(2, 20), CV_RGB(0,255,0), "%s: Click the %s corner", mouseOperationLabel[mouseOperation], mouseCornerLabel[nextMousePoint]);
+    if (projection) {
         CvPoint corners[4], *rect = corners;
         int cornerCount = 4;
         for (int i=0; i<4; i++)
@@ -617,10 +637,10 @@ int initCV(char *source) {
     frameWidth = cvGetCaptureProperty(capture,CV_CAP_PROP_FRAME_WIDTH);
     frameHeight = cvGetCaptureProperty(capture,CV_CAP_PROP_FRAME_HEIGHT);
 
-    cvSetCaptureProperty( capture, CV_CAP_PROP_FRAME_WIDTH, 960);
-    cvSetCaptureProperty( capture, CV_CAP_PROP_FRAME_HEIGHT, 720);
     frameWidth = 960;
     frameHeight = 720;
+    cvSetCaptureProperty( capture, CV_CAP_PROP_FRAME_WIDTH, frameWidth);
+    cvSetCaptureProperty( capture, CV_CAP_PROP_FRAME_HEIGHT, frameHeight);
     printf("%f, %f\n", frameWidth, frameHeight);
     min_area *= (frameWidth*frameWidth)/(1000*1000);
     max_area *= (frameWidth*frameWidth)/(1000*1000);
@@ -641,13 +661,15 @@ int initGame() {
     return 0;
 }
 
+CvMat *coviM = 0, *muM = 0;
 int handleKeypresses() {
     char c = cvWaitKey(5); // cvWaitKey takes care of event processing
     if( c == 27 )  //ESC
         return -1;
-    else if ( c == 'i' || (c == 'r' && (!projection || nextMousePoint != 4)))
+    else if ( c == 'i' ) {
+        mouseOperation = PICK_PROJECTION_CORNERS;
         nextMousePoint = 0;
-    else if ( c == 'r' ) {
+    } else if ( c == 'r' ) {
         matchStartTime = timeNow(); //set the match start time
         matchState = MATCH_RUNNING;
         sendStartPacket = 1; //set flag for start packet to be sent
@@ -655,6 +677,19 @@ int handleKeypresses() {
         goal = cvPoint(X_MIN, Y_MIN); // don't let pickNewGoal choose a point near the start
         goal = pickNewGoal();
         score = 0;
+    } else if ( c == 's' ) {
+        mouseOperation = PICK_SAMPLE_CORNERS;
+        nextMousePoint = 0;
+    } else if ( c == '+' ) {
+        if (coviM) {
+            cvScale(coviM, coviM, sqrt(0.5), 0);
+            cvScale(muM, muM, sqrt(0.5), 0);
+        }
+    } else if ( c == '-' ) {
+        if (coviM) {
+            cvScale(coviM, coviM, sqrt(2.0), 0);
+            cvScale(muM, muM, sqrt(2.0), 0);
+        }
     }
     return 0;
 }
@@ -665,6 +700,91 @@ void updateGame() {
         matchState = MATCH_ENDED;
     else
         checkGoals();
+}
+
+// compute hermitian square root H of inverse of symmetric matrix M with real positive eigenvalues
+// so that xT HT H x = xT M x
+CvMat *symmInvSqrt(CvMat *M) {
+    CvMat *W, *U, *V, *T;
+    W = cvCreateMat(M->rows, M->cols, CV_32FC1);
+    U = cvCreateMat(M->rows, M->cols, CV_32FC1);
+    V = cvCreateMat(M->rows, M->cols, CV_32FC1);
+    T = cvCreateMat(M->rows, M->cols, CV_32FC1);
+    cvSVD(M, W, U, V, CV_SVD_U_T|CV_SVD_V_T); // M = U W V^T
+    cvTranspose(U, U);
+
+    for (int i=0; i<M->rows; i++)
+        cvmSet(W, i, i, cvInvSqrt(cvmGet(W, i, i)));
+
+    cvMatMul(U, W, T);
+    cvMatMul(T, V, W);
+
+    cvReleaseMat(&U);
+    cvReleaseMat(&V);
+    cvReleaseMat(&T);
+    return W;
+}
+
+void sampleColorModel(IplImage *img) {
+    IplImage *work = cvCreateImage(cvSize(img->width, img->height), 8, 3);
+    //cvCvtColor(img, work, CV_BGR2Lab);
+    cvSmooth(img, work, CV_GAUSSIAN, 7, 7, 0, 0);
+    IplImage *mask = cvCreateImage(cvSize(img->width, img->height), 8, 1);
+    CvPoint pts[4], *quad = pts;
+    int count = 4;
+    cvSet(mask, cvRealScalar(0), 0);
+    for (int i=0; i<4; i++)
+    pts[i] = cvPoint(sampleCorners[i].x, sampleCorners[i].y);
+    cvFillPoly(mask, &quad, &count, 1, cvRealScalar(255), 8, 0);
+
+    float sxy[3][3], sx[3], cov[3][3], mu[3];
+    int n=0;
+    for (int i=0;i<3;i++) {
+        sx[i] = 0;
+        for (int j=0;j<3;j++) {
+            sxy[i][j] = 0;
+            cov[i][j] = 0;
+        }
+    }
+    for (int y=0; y<img->height; y++) {
+        for (int x=0; x<img->width; x++) {
+            if (cvGet2D(mask, y, x).val[0]) {
+                CvScalar rgb = cvGet2D(work, y, x);
+                for (int i=0;i<3;i++) {
+                    sx[i] += rgb.val[i];
+                    for (int j=0;j<3;j++)
+                        sxy[i][j] += rgb.val[i] * rgb.val[j];
+                }
+                n++;
+            }
+        }
+    }
+    for (int i=0;i<3;i++) {
+        for (int j=0;j<3;j++)
+            cov[i][j] = (sxy[i][j]/n - sx[i]*sx[j]/n/n);
+        mu[i] = sx[i]/n;
+        printf("%d %6.2f  %6.2f %6.2f %6.2f\n", i, mu[i], cov[i][0], cov[i][1], cov[i][2]);
+        mu[i] *= 128;
+    }
+
+    sampleColors = 0;
+
+    cvReleaseImage(&work);
+    cvReleaseImage(&mask);
+
+    CvMat covM = cvMat(3,3,CV_32FC1,cov);
+    coviM = symmInvSqrt(&covM);
+    CvMat *T = cvCreateMat(3,3,CV_32FC1);
+    cvMatMul(&covM, coviM, T);
+    cvMatMul(T, coviM, &covM);
+    // coviM has magnitude ~ 1/256.
+    cvScale(coviM, coviM, sqrt(0x1000)/128., 0.);
+    // coviM^2 has magnitude ~ 1/262144.
+    cvReleaseMat(&T);
+    muM = cvCreateMat(3,1,CV_32FC1);
+    for (int i=0;i<3;i++)
+    cvmSet(muM, i, 0, -mu[i]);
+    cvMatMul(coviM, muM, muM);
 }
 
 int main(int argc, char** argv) {
@@ -698,6 +818,8 @@ int main(int argc, char** argv) {
     }
     cvReleaseMat(&projPts);
 
+    IplImage *mask8 = 0, *mask = 0, *dev = 0, *grayscale = 0;
+
     projection_init(&projection, &invProjection, projectionPoints, bounds);
     while(1) {
         IplImage *frame = cvQueryFrame( capture );
@@ -709,7 +831,9 @@ int main(int argc, char** argv) {
         IplImage *img = cvCloneImage(frame); // can't modify original
         IplImage *out = cvCloneImage( img );
 
-        IplImage *grayscale = filter_image(img);
+        if (!grayscale)
+            grayscale = cvCreateImage(cvSize(img->width, img->height), 8, 1);
+        cvCvtColor(img, grayscale, CV_BGR2GRAY);
         CvSeq *squares = findCandidateSquares(grayscale);
         processSquares(img, out, grayscale, squares);
 
@@ -726,10 +850,29 @@ int main(int argc, char** argv) {
         if (param2== 0)
             canny_threshold = 1;
 
-
         CvSeq *circles = cvHoughCircles(grayscale, storage, CV_HOUGH_GRADIENT, 2, grayscale->height/4, canny_threshold, 100, min_radius, max_radius);
 
         processCircles(img, out, circles);
+
+        if (sampleColors)
+            sampleColorModel(img);
+
+        if (coviM) {
+            if (!mask8) {
+                mask8 = cvCreateImage(cvSize(img->width, img->height), IPL_DEPTH_8U, 1);
+                mask = cvCreateImage(cvSize(img->width, img->height), IPL_DEPTH_32F, 1); // IPL_DEPTH_16S mysteriously slower than IPL_DEPTH_32F
+                dev = cvCreateImage(cvSize(img->width, img->height), IPL_DEPTH_32F, 3); // IPL_DEPTH_16S
+            }
+            cvConvertScale(img, dev, 128., 0.); // 0...0x7FFF
+            cvTransform(dev, dev, coviM, muM); // 0...0x1000
+            cvMul(dev, dev, dev, 1);
+            float scale = 1./(9.*4.); // map 3 sigmas to 0xFF, 0 sigmas to 0
+            float sum[3] = {scale, scale, scale};
+            CvMat sumM = cvMat(1,3,CV_32FC1,sum);
+            cvTransform(dev, mask, &sumM, 0);
+            cvConvert(mask, mask8);
+            cvMerge(mask8, 0, 0, 0, out);
+        }
 
         if (handleKeypresses())
             break;
@@ -739,10 +882,22 @@ int main(int argc, char** argv) {
         cvShowImage( WND_MAIN, out );
         cvReleaseImage( &out );
 
-        cvReleaseImage(&grayscale);
         cvReleaseImage(&img);
         cvClearMemStorage(storage); // clear memory storage - reset free space position
     }
+
+    if (mask8) {
+        cvReleaseImage(&dev);
+        cvReleaseImage(&mask);
+        cvReleaseImage(&mask8);
+    }
+    if (grayscale)
+        cvReleaseImage(&grayscale);
+
+    if (coviM)
+        cvReleaseMat(&coviM);
+    if (muM)
+        cvReleaseMat(&muM);
 
     cleanupCV();
     cleanupUI();

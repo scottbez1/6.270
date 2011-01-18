@@ -5,9 +5,9 @@ int clamp(int x, int low, int high) {
 }
 
 // returns the squared euclidian distance between two points
-double dist_sq(CvPoint *a, CvPoint *b) {
-    double dx = a->x - b->x;
-    double dy = a->y - b->y;
+double dist_sq(CvPoint a, CvPoint b) {
+    double dx = a.x - b.x;
+    double dy = a.y - b.y;
     return dx*dx+dy*dy;
 }
 

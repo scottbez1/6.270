@@ -20,6 +20,8 @@ int fd;
 #endif
 
 void findDevice() {
+device = "/dev/ttyUSB0";
+/*
     printf("Searching /dev/%s*...\n", DEV_NAME);
     DIR *dirp = opendir(".");
     struct dirent *dp;
@@ -32,6 +34,7 @@ void findDevice() {
         }
     }
     closedir(dirp);
+*/
 }
 
 int serial_open(const char *ttyDevice){

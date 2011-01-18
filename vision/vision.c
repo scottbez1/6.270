@@ -1,5 +1,7 @@
 #include "vision.h"
 
+#define bool int
+
 double matchStartTime;
 int matchState = MATCH_ENDED;
 int sendStartPacket = 0;   //flag to have a start packet sent ASAP
@@ -11,7 +13,7 @@ pthread_mutex_t serial_lock;
 
 float bounds[4] = {X_MIN, X_MAX, Y_MIN, Y_MAX};
 
-#define SHOW_FILTERED_OUTPUT 0
+#define SHOW_FILTERED_OUTPUT 1
 
 const char *WND_MAIN = "6.270 Vision System";
 const char *WND_FILTERED = "Filtered Video";
@@ -20,12 +22,14 @@ const char *TRK_THRESHOLD = "Threshold";
 const char *TRK_TOLERANCE = "Side length tolerance";
 const char *TRK_MIN_AREA = "Min square area";
 const char *TRK_MAX_AREA = "Max square area";
+const char *TRK_MIN_BALL_DIM = "Min ball dimension";
+const char *TRK_MAX_BALL_DIM = "Max ball dimension";
+const char *TRK_BALL_THRESHOLD = "Ball brightness threshold";
+
 const char *TRK_ROBOT_A_ID = "Robot A id";
 const char *TRK_ROBOT_B_ID = "Robot B id";
 const char *TRK_RAND_GOAL_SEED = "Random goal seed";
 const char *TRK_CANNY_THRESHOLD = "Canny upper threshold";
-const char *TRK_MIN_RADIUS = "Min radius";
-const char *TRK_MAX_RADIUS = "Max radius";
 const char *TRK_HOUGH_VOTES = "Minimum Hough votes";
 
 enum {
@@ -44,8 +48,10 @@ int min_area = 800; // ~ square of (fraction of frame width in 1/1000s)
 int max_area = 5800; // will be corrected for resolution
 int canny_threshold = 20;
 int hough_votes = 80;
-int min_radius = 100;
-int max_radius = 200;
+
+int min_ball_dim = 6;
+int max_ball_dim = 16;
+int ball_threshold = 90;
 
 CvFont font;
 CvMemStorage *storage;
@@ -60,13 +66,13 @@ CvPoint pickNewGoal() {
         int x = boundedRandom(X_MIN+inset, X_MAX-inset);
         int y = boundedRandom(Y_MIN+inset,     0-inset);
         newGoal = cvPoint(x,y);
-    } while (dist_sq(&newGoal, &goal) < min_sep*min_sep);
+    } while (dist_sq(newGoal, goal) < min_sep*min_sep);
     return newGoal;
 }
 
 void checkGoals() {
     CvPoint robotPt = cvPoint(robot_a.x, robot_a.y);
-    if (sqrt(dist_sq(&goal, &robotPt)) <= GOAL_TOLERANCE) {
+    if (sqrt(dist_sq(goal, robotPt)) <= GOAL_TOLERANCE) {
         score++;
         goal = pickNewGoal();
         printf("GOAL!\n");
@@ -128,6 +134,48 @@ IplImage *filter_image( IplImage *img ) {
     return tgray;
 }
 
+void processBalls(IplImage *gray, IplImage *out){
+    CvSeq *contours;
+
+    cvSmooth(gray, gray, CV_GAUSSIAN, 5, 5, 0, 0);
+#if SHOW_FILTERED_OUTPUT
+    cvShowImage( WND_FILTERED, gray );
+#endif
+    cvThreshold( gray, gray, ball_threshold, 255, CV_THRESH_BINARY );
+
+    // find contours and store them all as a list
+    cvFindContours( gray, storage, &contours, sizeof(CvContour),
+        CV_RETR_LIST, CV_CHAIN_APPROX_SIMPLE, cvPoint(0,0) );
+    
+    
+    // test each contour
+    while( contours ) {
+        
+        CvRect boundRect = cvBoundingRect(contours, 0);
+       
+        if (boundRect.width >= min_ball_dim &&
+            boundRect.width <= max_ball_dim &&
+            boundRect.height>= min_ball_dim &&
+            boundRect.height<= max_ball_dim){
+           
+            CvPoint2D32f center = project(projection, cvPoint2D32f(boundRect.x + boundRect.width/2,boundRect.y+boundRect.height/2));
+            
+            //check if the contour is within the playing field
+            if (center.x >= X_MIN &&
+                center.x <= X_MAX &&
+                center.y >= Y_MIN &&
+                center.y <= Y_MAX){
+ 
+                    cvCircle(out, cvPoint(boundRect.x+boundRect.width/2, boundRect.y+boundRect.height/2), 10, CV_RGB(255,0,0),2, 8,0);
+            }
+        }
+
+        // take the next contour
+        contours = contours->h_next;
+    }
+}
+
+
 // returns sequence of squares detected on the image.
 // the sequence is stored in the shared memory storage
 CvSeq *findCandidateSquares(IplImage *tgray) {
@@ -142,10 +190,7 @@ CvSeq *findCandidateSquares(IplImage *tgray) {
     CvSeq *squares = cvCreateSeq( 0, sizeof(CvSeq), sizeof(CvPoint), storage );
 
     cvThreshold( tgray, gray, threshold, 255, CV_THRESH_BINARY );
-
-#if SHOW_FILTERED_OUTPUT
-    cvShowImage( WND_FILTERED, gray );
-#endif
+    
 
     // find contours and store them all as a list
     cvFindContours( gray, storage, &contours, sizeof(CvContour),
@@ -153,6 +198,7 @@ CvSeq *findCandidateSquares(IplImage *tgray) {
 
     // test each contour
     while( contours ) {
+        
         // approximate contour with accuracy proportional
         // to the contour perimeter
         result = cvApproxPoly( contours, sizeof(CvContour), storage,
@@ -186,10 +232,10 @@ CvSeq *findCandidateSquares(IplImage *tgray) {
 
                 // calculate the length of each side
                 double side_len[4];
-                side_len[0] = dist_sq(&pt[0],&pt[1]);
-                side_len[1] = dist_sq(&pt[1],&pt[2]);
-                side_len[2] = dist_sq(&pt[2],&pt[3]);
-                side_len[3] = dist_sq(&pt[3],&pt[0]);
+                side_len[0] = dist_sq(pt[0],pt[1]);
+                side_len[1] = dist_sq(pt[1],pt[2]);
+                side_len[2] = dist_sq(pt[2],pt[3]);
+                side_len[3] = dist_sq(pt[3],pt[0]);
 
                 double tolerance = (double)side_tolerance / 100.;
                 // check to make sure all sides are approx. the same length as side 0
@@ -197,15 +243,18 @@ CvSeq *findCandidateSquares(IplImage *tgray) {
                         fabs(side_len[0] - side_len[2])/side_len[0] <= tolerance &&
                         fabs(side_len[0] - side_len[3])/side_len[0] <= tolerance) {
                     // then write quandrange vertices to resultant sequence in clockwise order
+        
                     for( i = 0; i < 4; i++ )
                         cvSeqPush( squares, &pt[i] );
                 }
             }
         }
+        
 
         // take the next contour
         contours = contours->h_next;
     }
+
     // release all the temporary images
     cvReleaseImage( &gray );
     return squares;
@@ -224,11 +273,16 @@ int cvPrintf(IplImage *img, CvPoint pt, CvScalar color, const char *format, ...)
     return count;
 }
 
-void drawSquare(IplImage *out, CvPoint pt[4], CvPoint2D32f bit_pt_true[16], int id, CvPoint2D32f orientationHandle) {
+void drawSquare(IplImage *out, IplImage *gray, CvPoint pt[4], CvPoint2D32f bit_pt_true[16], int id, CvPoint2D32f orientationHandle) {
     // draw the square as a closed polyline
     CvPoint *rect = pt;
     int count = 4;
     cvPolyLine(out, &rect, &count, 1, 1, CV_RGB(0,0,255), 2, CV_AA, 0 );
+
+
+    //black out square area in original grayscale image since it has been processed
+    cvFillPoly(gray, &rect, &count, 1, CV_RGB(0,0,0), 8, 0);
+    
 
     if (id != -1) {
         // for debugging, draw a dot over each bit location
@@ -279,10 +333,14 @@ int getOrientationFromBits(int bit_raw[16], int *orientation) {
 }
 
 int getIDFromBits(int bit_true[16], int *id) {
+    *id = (bit_true[5] << 0) + (bit_true[6] << 1) + (bit_true[9] << 2) + (bit_true[10] << 3);
+
+    /* 
     *id = (bit_true[5] << 0) + (bit_true[6] << 1) + (bit_true[9] << 2) + (bit_true[10] << 3) +
         (bit_true[1] << 4) + (bit_true[2] << 5) + (bit_true[4] << 6) + (bit_true[7] << 7) +
         (bit_true[8] << 8) + (bit_true[11] << 9) + (bit_true[13] << 10) + (bit_true[14] << 11) +
         ((bit_true[12] + bit_true[15]) << 12);
+    */
     return 1;
 }
 
@@ -414,7 +472,7 @@ void processRobotDetection(CvPoint2D32f trueCenter, float theta, int id, CvPoint
     pthread_mutex_lock( &serial_lock);
     robot->x = clamp(trueCenter.x, X_MIN, X_MAX);
     robot->y = clamp(trueCenter.y, Y_MIN, Y_MAX);
-    robot->theta = theta / M_PI * 2048; //change theta from +/- PI to +/-2048 (signed 12 bit int)
+    robot->theta = theta / CV_PI * 2048; //change theta from +/- PI to +/-2048 (signed 12 bit int)
     pthread_mutex_unlock( &serial_lock);
 
     if (0)
@@ -482,7 +540,7 @@ void processSquares( IplImage *img, IplImage *out, IplImage *grayscale, CvSeq *s
             theta = getThetaFromExtension(bit_pt_true, trueCenter);
         processRobotDetection(trueCenter, theta, id, &orientationHandle);
 
-        drawSquare(out, pt, bit_pt_true, id, orientationHandle);
+        drawSquare(out, grayscale, pt, bit_pt_true, id, orientationHandle);
     }
 
     updateHUD(out);
@@ -567,8 +625,9 @@ void cleanupSerial() {
 }
 
 void preserveValues(int id) {
-    int params[9] = {threshold, side_tolerance, min_area, max_area, robot_a.id, robot_b.id, randomGoalSeed, canny_threshold, hough_votes};
-    CvMat matrix = cvMat(9,1,CV_32SC1,params);
+    #define NUM_PARAMS 12
+    int params[NUM_PARAMS] = {threshold, side_tolerance, min_area, max_area, robot_a.id, robot_b.id, randomGoalSeed, canny_threshold, hough_votes, min_ball_dim, max_ball_dim, ball_threshold};
+    CvMat matrix = cvMat(NUM_PARAMS,1,CV_32SC1,params);
     cvSave( "Params.xml", &matrix, 0, 0, cvAttrList(0, 0) );
 }
 
@@ -589,8 +648,11 @@ int initUI() {
     cvCreateTrackbar( TRK_RAND_GOAL_SEED, WND_CONTROLS, &randomGoalSeed, 5000, &preserveValues);
     cvCreateTrackbar( TRK_CANNY_THRESHOLD, WND_CONTROLS, &canny_threshold, 255, &preserveValues);
     cvCreateTrackbar( TRK_HOUGH_VOTES, WND_CONTROLS, &hough_votes, 100, &preserveValues);
-    cvCreateTrackbar( TRK_MIN_RADIUS, WND_CONTROLS, &min_radius, 800, NULL);
-    cvCreateTrackbar( TRK_MAX_RADIUS, WND_CONTROLS, &max_radius, 800, NULL);
+    
+    cvCreateTrackbar( TRK_MIN_BALL_DIM, WND_CONTROLS, &min_ball_dim, 50, &preserveValues);
+    cvCreateTrackbar( TRK_MAX_BALL_DIM, WND_CONTROLS, &max_ball_dim, 50, &preserveValues);
+    cvCreateTrackbar( TRK_BALL_THRESHOLD, WND_CONTROLS, &ball_threshold, 255, &preserveValues);
+    
 
     cvSetMouseCallback(WND_MAIN,mouseHandler, NULL);
 
@@ -634,11 +696,8 @@ int initCV(char *source) {
 
     //printf("PROPERTY: %f\n",cvGetCaptureProperty( capture, CV_CAP_PROP_MODE ));
     */
-    frameWidth = cvGetCaptureProperty(capture,CV_CAP_PROP_FRAME_WIDTH);
-    frameHeight = cvGetCaptureProperty(capture,CV_CAP_PROP_FRAME_HEIGHT);
-
-    frameWidth = 960;
-    frameHeight = 720;
+    frameWidth = 640;
+    frameHeight = 480;
     cvSetCaptureProperty( capture, CV_CAP_PROP_FRAME_WIDTH, frameWidth);
     cvSetCaptureProperty( capture, CV_CAP_PROP_FRAME_HEIGHT, frameHeight);
     printf("%f, %f\n", frameWidth, frameHeight);
@@ -834,9 +893,13 @@ int main(int argc, char** argv) {
         if (!grayscale)
             grayscale = cvCreateImage(cvSize(img->width, img->height), 8, 1);
         cvCvtColor(img, grayscale, CV_BGR2GRAY);
-        CvSeq *squares = findCandidateSquares(grayscale);
+        CvSeq *squares = findCandidateSquares(grayscale); 
         processSquares(img, out, grayscale, squares);
 
+
+        processBalls(grayscale, out);
+
+/*
         float radius_coords = FOOT * 1.68 * .5 / 12.; // golf ball
         CvPoint2D32f pt[2] = {cvPoint2D32f(0, 0), cvPoint2D32f(radius_coords, 0)};
         pt[0] = project(invProjection, pt[0]);
@@ -850,29 +913,10 @@ int main(int argc, char** argv) {
         if (param2== 0)
             canny_threshold = 1;
 
-        CvSeq *circles = cvHoughCircles(grayscale, storage, CV_HOUGH_GRADIENT, 2, grayscale->height/4, canny_threshold, 100, min_radius, max_radius);
+        CvSeq *circles = cvHoughCircles(grayscale, storage, CV_HOUGH_GRADIENT, 2, grayscale->height/4, canny_threshold, hough_votes, 7,7);
 
         processCircles(img, out, circles);
-
-        if (sampleColors)
-            sampleColorModel(img);
-
-        if (coviM) {
-            if (!mask8) {
-                mask8 = cvCreateImage(cvSize(img->width, img->height), IPL_DEPTH_8U, 1);
-                mask = cvCreateImage(cvSize(img->width, img->height), IPL_DEPTH_32F, 1); // IPL_DEPTH_16S mysteriously slower than IPL_DEPTH_32F
-                dev = cvCreateImage(cvSize(img->width, img->height), IPL_DEPTH_32F, 3); // IPL_DEPTH_16S
-            }
-            cvConvertScale(img, dev, 128., 0.); // 0...0x7FFF
-            cvTransform(dev, dev, coviM, muM); // 0...0x1000
-            cvMul(dev, dev, dev, 1);
-            float scale = 1./(9.*4.); // map 3 sigmas to 0xFF, 0 sigmas to 0
-            float sum[3] = {scale, scale, scale};
-            CvMat sumM = cvMat(1,3,CV_32FC1,sum);
-            cvTransform(dev, mask, &sumM, 0);
-            cvConvert(mask, mask8);
-            cvMerge(mask8, 0, 0, 0, out);
-        }
+*/
 
         if (handleKeypresses())
             break;

@@ -7,8 +7,13 @@ int matchState = MATCH_ENDED;
 int sendStartPacket = 0;   //flag to have a start packet sent ASAP
 int score = 0;
 CvPoint goal;
-robot_t robot_a;
-robot_t robot_b;
+
+#define NUM_OBJECTS 32
+board_coord objects[NUM_OBJECTS];
+int robot_a_id;
+int robot_b_id;
+
+
 pthread_mutex_t serial_lock;
 
 float bounds[4] = {X_MIN, X_MAX, Y_MIN, Y_MAX};
@@ -71,7 +76,7 @@ CvPoint pickNewGoal() {
 }
 
 void checkGoals() {
-    CvPoint robotPt = cvPoint(robot_a.x, robot_a.y);
+    CvPoint robotPt = cvPoint(objects[0].x, objects[0].y);
     if (sqrt(dist_sq(goal, robotPt)) <= GOAL_TOLERANCE) {
         score++;
         goal = pickNewGoal();
@@ -134,7 +139,7 @@ IplImage *filter_image( IplImage *img ) {
     return tgray;
 }
 
-void processBalls(IplImage *gray, IplImage *out){
+void processBalls(IplImage *img, IplImage *gray, IplImage *out){
     CvSeq *contours;
 
     cvSmooth(gray, gray, CV_GAUSSIAN, 5, 5, 0, 0);
@@ -146,8 +151,11 @@ void processBalls(IplImage *gray, IplImage *out){
     // find contours and store them all as a list
     cvFindContours( gray, storage, &contours, sizeof(CvContour),
         CV_RETR_LIST, CV_CHAIN_APPROX_SIMPLE, cvPoint(0,0) );
+
+
+    int curObject = 2;
     
-    
+
     // test each contour
     while( contours ) {
         
@@ -165,14 +173,53 @@ void processBalls(IplImage *gray, IplImage *out){
                 center.x <= X_MAX &&
                 center.y >= Y_MIN &&
                 center.y <= Y_MAX){
- 
-                    cvCircle(out, cvPoint(boundRect.x+boundRect.width/2, boundRect.y+boundRect.height/2), 10, CV_RGB(255,0,0),2, 8,0);
+                    if (curObject < NUM_OBJECTS){
+                        int x = boundRect.x + boundRect.width/2;
+                        int y = boundRect.y + boundRect.height/2;
+
+                        IplImage *tempBGR = cvCreateImage( cvSize(1,1), 8, 3 );
+                        IplImage *tempHSV = cvCreateImage( cvSize(1,1), 8, 3 );
+
+                        cvSet2D(tempBGR, 0,0, cvGet2D(img,y,x));
+                        cvCvtColor(tempBGR, tempHSV, CV_BGR2HSV);
+                        CvScalar pixelHSV = cvGet2D(tempHSV,0,0);
+//                        printf("%.2f, %.2f\n", pixelHSV.val[0], pixelHSV.val[1]);
+
+                        cvReleaseImage(&tempBGR);
+                        cvReleaseImage(&tempHSV);
+
+                        pthread_mutex_lock( &serial_lock);
+                        objects[curObject].id = 0xFF;
+                        objects[curObject].x = center.x;
+                        objects[curObject].y = center.y;
+                        objects[curObject].radius = ((float)boundRect.width-min_ball_dim)/(max_ball_dim-min_ball_dim)*15;
+                        objects[curObject].a = clamp(pixelHSV.val[0], 0,180) * 15 / 180;
+                        objects[curObject].b = clamp(pixelHSV.val[1], 0,255) * 15 / 255;
+                        printf("%i, %i\n", objects[curObject].a, objects[curObject].b);
+                        pthread_mutex_unlock( &serial_lock);
+
+                        curObject++;
+
+                        cvCircle(out, cvPoint(boundRect.x+boundRect.width/2, boundRect.y+boundRect.height/2), 10, CV_RGB(0,200,0),2, 8,0);
+                        
+
+                    } else {
+                        printf("Too many objects found!");
+                        cvCircle(out, cvPoint(boundRect.x+boundRect.width/2, boundRect.y+boundRect.height/2), 10, CV_RGB(255,0,0),4, 8,0);
+                    }
             }
         }
 
         // take the next contour
         contours = contours->h_next;
     }
+
+    //zero all other objects
+    pthread_mutex_lock( &serial_lock);
+    for (; curObject < NUM_OBJECTS; curObject++){
+        objects[curObject].id = 0xAA;
+    }
+    pthread_mutex_unlock( &serial_lock);
 }
 
 
@@ -457,11 +504,11 @@ void processRobotDetection(CvPoint2D32f trueCenter, float theta, int id, CvPoint
     *orientationHandle = cvPoint2D32f(trueCenter.x + FOOT*cos(theta), trueCenter.y + FOOT*sin(theta));
     *orientationHandle = project(invProjection, *orientationHandle);
 
-    robot_t *robot;
-    if (robot_a.id == id)
-        robot = &robot_a;
-    else if (robot_b.id == id)
-        robot = &robot_b;
+    board_coord *robot;
+    if (objects[0].id == id)
+        robot = &objects[0];
+    else if (objects[1].id == id)
+        robot = &objects[1];
     else {
         //not a recognized robot id, ignore it
         printf("Ignoring detected robot %i\n", id);
@@ -568,40 +615,45 @@ void processCircles( IplImage *img, IplImage *out, CvSeq *circles ) {
 void *runSerial(void *params){
     packet_buffer position;
     while(1) {
+        
         position.type = POSITION;
-        position.address = 0xFF;
+        position.board = 0;
+        for (int i = 0; i<7; i++){
+            //printf("========\n");
+            pthread_mutex_lock( &serial_lock );
+            position.seq_no = i;
 
-        pthread_mutex_lock( &serial_lock );
-        position.payload.coords[0].id = robot_a.id;
-        position.payload.coords[0].x = robot_a.x;
-        position.payload.coords[0].y = robot_a.y;
-        position.payload.coords[0].theta = robot_a.theta;
+            //copy data from objects array into payload
+            memcpy(&position.payload, &objects[4*i], sizeof(board_coord)*4);
+            
+            /*    
+            for (int j = 0; j<4; j++){
+                printf("id:%i; x:%i; y:%i; radius: %i\n",
+                        position.payload.coords[j].id,
+                        position.payload.coords[j].x,
+                        position.payload.coords[j].y,
+                        position.payload.coords[j].radius);
 
-        position.payload.coords[1].id = robot_b.id;
-        position.payload.coords[1].x = robot_b.x;
-        position.payload.coords[1].y = robot_b.y;
-        position.payload.coords[1].theta = robot_b.theta;
-        pthread_mutex_unlock(&serial_lock);
+            }
+            */
+            
+            //TODO send data, memcpy
+            pthread_mutex_unlock(&serial_lock);
 
-        //put goal position as object 2:
-        position.payload.coords[2].id = 100;
-        position.payload.coords[2].x = clamp(goal.x, X_MIN, X_MAX);
-        position.payload.coords[2].y = clamp(goal.y, Y_MIN, Y_MAX);
-
-        serial_send_packet(&position);
-
+            serial_send_packet(&position);
+        }
+        
+        
         if (sendStartPacket){
             packet_buffer startPacket;
             startPacket.type = START;
-            startPacket.payload.array[0] = robot_a.id;
-            startPacket.payload.array[1] = robot_b.id;
+            startPacket.payload.array[0] = objects[0].id;
+            startPacket.payload.array[1] = objects[1].id;
 
             serial_send_packet(&startPacket);
-
+            printf("start!\n");
             sendStartPacket = 0;
         }
-
-        //usleep(50000);
     }
 }
 
@@ -625,8 +677,11 @@ void cleanupSerial() {
 }
 
 void preserveValues(int id) {
+    objects[0].id = robot_a_id;
+    objects[1].id = robot_b_id;
+
     #define NUM_PARAMS 12
-    int params[NUM_PARAMS] = {threshold, side_tolerance, min_area, max_area, robot_a.id, robot_b.id, randomGoalSeed, canny_threshold, hough_votes, min_ball_dim, max_ball_dim, ball_threshold};
+    int params[NUM_PARAMS] = {threshold, side_tolerance, min_area, max_area, objects[0].id, objects[1].id, randomGoalSeed, canny_threshold, hough_votes, min_ball_dim, max_ball_dim, ball_threshold};
     CvMat matrix = cvMat(NUM_PARAMS,1,CV_32SC1,params);
     cvSave( "Params.xml", &matrix, 0, 0, cvAttrList(0, 0) );
 }
@@ -643,8 +698,8 @@ int initUI() {
     cvCreateTrackbar( TRK_TOLERANCE, WND_CONTROLS, &side_tolerance, 300, &preserveValues);
     cvCreateTrackbar( TRK_MIN_AREA, WND_CONTROLS, &min_area, 10000, &preserveValues);
     cvCreateTrackbar( TRK_MAX_AREA, WND_CONTROLS, &max_area, 10000, &preserveValues);
-    cvCreateTrackbar( TRK_ROBOT_A_ID, WND_CONTROLS, &robot_a.id, MAX_ROBOT_ID-1, &preserveValues);
-    cvCreateTrackbar( TRK_ROBOT_B_ID, WND_CONTROLS, &robot_b.id, MAX_ROBOT_ID-1, &preserveValues);
+    cvCreateTrackbar( TRK_ROBOT_A_ID, WND_CONTROLS, &robot_a_id, MAX_ROBOT_ID-1, &preserveValues);
+    cvCreateTrackbar( TRK_ROBOT_B_ID, WND_CONTROLS, &robot_b_id, MAX_ROBOT_ID-1, &preserveValues);
     cvCreateTrackbar( TRK_RAND_GOAL_SEED, WND_CONTROLS, &randomGoalSeed, 5000, &preserveValues);
     cvCreateTrackbar( TRK_CANNY_THRESHOLD, WND_CONTROLS, &canny_threshold, 255, &preserveValues);
     cvCreateTrackbar( TRK_HOUGH_VOTES, WND_CONTROLS, &hough_votes, 100, &preserveValues);
@@ -715,8 +770,8 @@ void cleanupCV() {
 }
 
 int initGame() {
-    robot_a.id=14;
-    robot_b.id=7;
+    objects[0].id=14;
+    objects[1].id=7;
     return 0;
 }
 
@@ -869,8 +924,8 @@ int main(int argc, char** argv) {
         side_tolerance = CV_MAT_ELEM(*params, int, 0, 0);
         min_area = CV_MAT_ELEM(*params, int, 0, 0);
         max_area = CV_MAT_ELEM(*params, int, 0, 0);
-        robot_a.id = CV_MAT_ELEM(*params, int, 0, 0);
-        robot_b.id = CV_MAT_ELEM(*params, int, 0, 0);
+        objects[0].id = CV_MAT_ELEM(*params, int, 0, 0);
+        objects[1].id = CV_MAT_ELEM(*params, int, 0, 0);
         randomGoalSeed = CV_MAT_ELEM(*params, int, 0, 0);
         canny_threshold = CV_MAT_ELEM(*params, int, 0, 0);
         hough_votes = CV_MAT_ELEM(*params, int, 0, 0);
@@ -897,7 +952,7 @@ int main(int argc, char** argv) {
         processSquares(img, out, grayscale, squares);
 
 
-        processBalls(grayscale, out);
+        processBalls(img, grayscale, out);
 
 /*
         float radius_coords = FOOT * 1.68 * .5 / 12.; // golf ball

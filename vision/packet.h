@@ -2,47 +2,50 @@
 #define _PACKET_H_
 
 #include <stdint.h>
+#ifndef SIMULATE
+#include <stdio.h>
+#endif
+
+#ifndef SIMULATE
 
 #define PAYLOAD_SIZE 30
 
-#define POSITION 0x00 //Updated position of this bot, other bot, or mouse
-#define START 0x01 //Start of the round
-#define STOP 0x02 //End of the round
-#define STRING 0x03 //String from bot to board
-#define SYNC 0x04 //Not sure how to use yet.  Established IDs of all bots/vision system on board
-#define GOAL 0x05 //Sets the target position of this robot
-#define LIGHT 0x06 //Instructs robots to turn their lights on or off
-#define REPLY_STRING 0x07 //String from board to bot
-#define STATUS 0x08 // Status packet from mouse
+enum {
+    POSITION, //Updated position of this bot, other bot, or mouse
+    START, //Start of the round
+    STOP, //End of the round
+    STRING, //String from bot to board
+    REPLY_STRING //String from board to bot
+} packet_type;
+
+#endif
 
 typedef struct {
-    uint8_t id;
+    unsigned id : 8;
     signed x : 12;
     signed y : 12;
     signed theta : 12;
-    unsigned confidence : 12;
+    unsigned a : 4;
+    unsigned b : 4;
+    unsigned radius : 4;
+#ifndef SIMULATE
 } __attribute__ ((aligned (1))) __attribute__ ((packed)) board_coord;
+#else
+} board_coord;
+#endif
 
-typedef struct{
-    uint8_t id;
-    int16_t value;
-} __attribute__ ((aligned (1))) __attribute__ ((packed)) light_command;
-
-typedef struct{
-    uint8_t id;
-    uint8_t caught;
-} __attribute__ ((aligned (1))) __attribute__ ((packed)) status_update;
+#ifndef SIMULATE
 
 typedef struct {
     uint8_t type;
-    uint8_t address;
+    unsigned board : 2;
+    unsigned seq_no : 6;
     union {
         uint8_t array[PAYLOAD_SIZE];
         board_coord coords[4];
-        light_command lights[4];
-        status_update status;
     } payload;
-} __attribute__ ((packed)) packet_buffer;
+} __attribute__ ((aligned (1))) __attribute__ ((packed)) packet_buffer;
 
+#endif
 
 #endif

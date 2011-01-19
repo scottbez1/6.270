@@ -764,9 +764,21 @@ void preserveValues(int id) {
     objects[0].id = robot_a_id;
     objects[1].id = robot_b_id;
 
-    #define NUM_PARAMS 12
-    int params[NUM_PARAMS] = {threshold, side_tolerance, min_area, max_area, objects[0].id, objects[1].id, randomGoalSeed, canny_threshold, hough_votes, min_ball_dim, max_ball_dim, ball_threshold};
-    CvMat matrix = cvMat(NUM_PARAMS,1,CV_32SC1,params);
+    int params[] = {
+        ball_threshold,
+        canny_threshold,
+        hough_votes,
+        max_area,
+        max_ball_dim,
+        min_area,
+        min_ball_dim,
+        objects[0].id,
+        objects[1].id,
+        randomGoalSeed,
+        side_tolerance,
+        threshold
+    };
+    CvMat matrix = cvMat(sizeof(params)/sizeof(int),1,CV_32SC1,params);
     cvSave( "Params.xml", &matrix, 0, 0, cvAttrList(0, 0) );
 }
 
@@ -997,15 +1009,18 @@ int main(int argc, char** argv) {
             projectionPoints[i] = CV_MAT_ELEM(*projPts, CvPoint2D32f, i, 0);
     }
     if (params && params->rows == 9 && params->rows == 1) {
-        threshold = CV_MAT_ELEM(*params, int, 0, 0);
-        side_tolerance = CV_MAT_ELEM(*params, int, 0, 0);
-        min_area = CV_MAT_ELEM(*params, int, 0, 0);
-        max_area = CV_MAT_ELEM(*params, int, 0, 0);
-        objects[0].id = CV_MAT_ELEM(*params, int, 0, 0);
-        objects[1].id = CV_MAT_ELEM(*params, int, 0, 0);
-        randomGoalSeed = CV_MAT_ELEM(*params, int, 0, 0);
-        canny_threshold = CV_MAT_ELEM(*params, int, 0, 0);
-        hough_votes = CV_MAT_ELEM(*params, int, 0, 0);
+        ball_threshold = CV_MAT_ELEM(*params, int, 0, 0);
+        canny_threshold = CV_MAT_ELEM(*params, int, 1, 0);
+        hough_votes = CV_MAT_ELEM(*params, int, 2, 0);
+        max_area = CV_MAT_ELEM(*params, int, 3, 0);
+        max_ball_dim = CV_MAT_ELEM(*params, int, 4, 0);
+        min_area = CV_MAT_ELEM(*params, int, 5, 0);
+        min_ball_dim = CV_MAT_ELEM(*params, int, 6, 0);
+        objects[0].id = CV_MAT_ELEM(*params, int, 7, 0);
+        objects[1].id = CV_MAT_ELEM(*params, int, 8, 0);
+        randomGoalSeed = CV_MAT_ELEM(*params, int, 9, 0);
+        side_tolerance = CV_MAT_ELEM(*params, int, 10, 0);
+        threshold = CV_MAT_ELEM(*params, int, 11, 0);
     }
     cvReleaseMat(&projPts);
     cvReleaseMat(&params);

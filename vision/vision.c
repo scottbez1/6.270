@@ -902,13 +902,6 @@ void sampleColorModel(IplImage *img) {
 }
 
 int main(int argc, char** argv) {
-    if (initSerial(argc>2 ? argv[2] : NULL)) return -1;
-    if (initUI()) return -1;
-    if (initCV(argc>1 ? argv[1] : NULL)) return -1;
-    if (initGame()) return -1;
-
-    printf("To initialize coordinate projection, press <i>\n");
-
     projectionPoints[0] = cvPoint2D32f(0, 0);
     projectionPoints[1] = cvPoint2D32f(frameWidth, 0);
     projectionPoints[2] = cvPoint2D32f(frameWidth, frameHeight);
@@ -931,6 +924,14 @@ int main(int argc, char** argv) {
         hough_votes = CV_MAT_ELEM(*params, int, 0, 0);
     }
     cvReleaseMat(&projPts);
+    cvReleaseMat(&params);
+
+    if (initSerial(argc>2 ? argv[2] : NULL)) return -1;
+    if (initUI()) return -1;
+    if (initCV(argc>1 ? argv[1] : NULL)) return -1;
+    if (initGame()) return -1;
+
+    printf("To initialize coordinate projection, press <i>\n");
 
     IplImage *mask8 = 0, *mask = 0, *dev = 0, *grayscale = 0;
 

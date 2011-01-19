@@ -275,8 +275,8 @@ void processBalls(IplImage *img, IplImage *gray, IplImage *out){
                         tempObjects[curObject].x = center.x;
                         tempObjects[curObject].y = center.y;
                         tempObjects[curObject].radius = ((float)boundRect.width-min_ball_dim)/(max_ball_dim-min_ball_dim)*15;
-                        tempObjects[curObject].hue = (int)(pixelHSV.val[0] * 16 / 180 + 0.5) % 16;
-                        tempObjects[curObject].saturation = clamp(pixelHSV.val[1] * 16 / 255 + 0.5, 0, 15);
+                        tempObjects[curObject].hue = (int)(pixelHSV.val[0] * 16.0 / 180.0 + 0.5) % 16;
+                        tempObjects[curObject].saturation = pixelHSV.val[1] * 16.0 / 256.0;
                         //printf("%i, %i\n", objects[curObject].a, objects[curObject].b);
 
                         curObject++;

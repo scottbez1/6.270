@@ -139,6 +139,87 @@ IplImage *filter_image( IplImage *img ) {
     return tgray;
 }
 
+
+
+int getObjectDistance(board_coord a, board_coord b){
+    if (a.id != 0xFF || b.id != 0xFF){
+        return INT_MAX;
+    }
+    return dist_sq(cvPoint(a.x,a.y), cvPoint(b.x,b.y));
+}
+
+typedef struct {
+    int prevIdx;
+    int curIdx;
+    int distance;
+} obj_dist;
+
+int compareDists(const void *a, const void *b){
+    obj_dist *A = (obj_dist*)a;
+    obj_dist *B = (obj_dist*)b;
+
+    if (A->distance < B->distance)
+        return -1;
+    else if (A->distance == B->distance)
+        return 0;
+    else if (A->distance > B->distance)
+        return 1;
+}
+
+//push currentObjects into previousObjects by matching balls to try and maintain
+//proper ordering
+void matchObjects(board_coord previousObjects[NUM_OBJECTS], board_coord currentObjects[NUM_OBJECTS]){
+
+    obj_dist distances[(NUM_OBJECTS-2)*(NUM_OBJECTS-2)];
+    
+    int i = 0;
+    for (int prevIdx = 2; prevIdx < NUM_OBJECTS; prevIdx++) { //don't match index 0 or 1 - these are always robots
+        for (int curIdx = 2; curIdx < NUM_OBJECTS; curIdx++){
+            int dist = getObjectDistance(previousObjects[prevIdx], currentObjects[curIdx]);
+           obj_dist d;
+           d.prevIdx = prevIdx;
+           d.curIdx = curIdx;
+           d.distance = dist;
+           distances[i] = d;
+           i++;
+        }
+    }
+
+    //clear previousObjects
+    for (int j = 2; j < NUM_OBJECTS; j++){
+        previousObjects[j].id = 0;
+        previousObjects[j].x = 0;
+        previousObjects[j].y = 0;
+        previousObjects[j].radius = 0;
+        previousObjects[j].hue = 0;
+        previousObjects[j].saturation = 0;
+    }
+
+    qsort(distances, (NUM_OBJECTS-2)*(NUM_OBJECTS-2), sizeof(obj_dist), &compareDists);
+
+    bool curObjectPlaced[NUM_OBJECTS]; //flags for if an object has been placed 
+    bool prevObjectUsed[NUM_OBJECTS]; //flags for if an object has been placed 
+    for (int j = 0; j < NUM_OBJECTS; j++){
+        curObjectPlaced[j] = 0;
+        prevObjectUsed[j] = 0;
+    }
+
+
+    //loop through sorted obj_dist's and match lowest distance first
+    for (int j = 0; j < (NUM_OBJECTS-2)*(NUM_OBJECTS-2); j++){
+        if (!curObjectPlaced[distances[j].curIdx] &&
+            !prevObjectUsed[distances[j].prevIdx]){
+
+            //printf("placing curobject %i into objects[%i]\n", distances[j].curIdx, distances[j].prevIdx);
+            //place curObject into prevObjects array
+            previousObjects[distances[j].prevIdx] = currentObjects[distances[j].curIdx];
+
+            curObjectPlaced[distances[j].curIdx] = 1;
+            prevObjectUsed[distances[j].prevIdx] = 1;
+        }
+    }
+}
+
 void processBalls(IplImage *img, IplImage *gray, IplImage *out){
     CvSeq *contours;
 
@@ -154,7 +235,9 @@ void processBalls(IplImage *img, IplImage *gray, IplImage *out){
 
 
     int curObject = 2;
-    
+   
+
+    board_coord tempObjects[NUM_OBJECTS];
 
     // test each contour
     while( contours ) {
@@ -188,15 +271,13 @@ void processBalls(IplImage *img, IplImage *gray, IplImage *out){
                         cvReleaseImage(&tempBGR);
                         cvReleaseImage(&tempHSV);
 
-                        pthread_mutex_lock( &serial_lock);
-                        objects[curObject].id = 0xFF;
-                        objects[curObject].x = center.x;
-                        objects[curObject].y = center.y;
-                        objects[curObject].radius = ((float)boundRect.width-min_ball_dim)/(max_ball_dim-min_ball_dim)*15;
-                        objects[curObject].hue = (int)(pixelHSV.val[0] * 16 / 180 + 0.5) % 16;
-                        objects[curObject].saturation = clamp(pixelHSV.val[1] * 16 / 255 + 0.5, 0, 15);
+                        tempObjects[curObject].id = 0xFF;
+                        tempObjects[curObject].x = center.x;
+                        tempObjects[curObject].y = center.y;
+                        tempObjects[curObject].radius = ((float)boundRect.width-min_ball_dim)/(max_ball_dim-min_ball_dim)*15;
+                        tempObjects[curObject].hue = (int)(pixelHSV.val[0] * 16 / 180 + 0.5) % 16;
+                        tempObjects[curObject].saturation = clamp(pixelHSV.val[1] * 16 / 255 + 0.5, 0, 15);
                         //printf("%i, %i\n", objects[curObject].a, objects[curObject].b);
-                        pthread_mutex_unlock( &serial_lock);
 
                         curObject++;
 
@@ -215,10 +296,12 @@ void processBalls(IplImage *img, IplImage *gray, IplImage *out){
     }
 
     //zero all other objects
-    pthread_mutex_lock( &serial_lock);
     for (; curObject < NUM_OBJECTS; curObject++){
-        objects[curObject].id = 0xAA;
+        tempObjects[curObject].id = 0xAA;
     }
+    
+    pthread_mutex_lock( &serial_lock);
+    matchObjects(objects, tempObjects); 
     pthread_mutex_unlock( &serial_lock);
 }
 
@@ -618,15 +701,15 @@ void *runSerial(void *params){
         
         position.type = POSITION;
         position.board = 0;
-        for (int i = 0; i<7; i++){
-            //printf("========\n");
+        for (int i = 0; i<8; i++){
+            //printf("========%i=======\n", i);
             pthread_mutex_lock( &serial_lock );
             position.seq_no = i;
 
             //copy data from objects array into payload
             memcpy(&position.payload, &objects[4*i], sizeof(board_coord)*4);
             
-            /*    
+            /* 
             for (int j = 0; j<4; j++){
                 printf("id:%i; x:%i; y:%i; radius: %i\n",
                         position.payload.coords[j].id,
@@ -636,6 +719,7 @@ void *runSerial(void *params){
 
             }
             */
+            
             
             //TODO send data, memcpy
             pthread_mutex_unlock(&serial_lock);

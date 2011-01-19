@@ -18,7 +18,7 @@ pthread_mutex_t serial_lock;
 
 float bounds[4] = {X_MIN, X_MAX, Y_MIN, Y_MAX};
 
-#define SHOW_FILTERED_OUTPUT 1
+#define SHOW_FILTERED_OUTPUT 0
 
 const char *WND_MAIN = "6.270 Vision System";
 const char *WND_FILTERED = "Filtered Video";
@@ -193,8 +193,8 @@ void processBalls(IplImage *img, IplImage *gray, IplImage *out){
                         objects[curObject].x = center.x;
                         objects[curObject].y = center.y;
                         objects[curObject].radius = ((float)boundRect.width-min_ball_dim)/(max_ball_dim-min_ball_dim)*15;
-                        objects[curObject].hue = clamp(pixelHSV.val[0], 0,180) * 15 / 180;
-                        objects[curObject].saturation = clamp(pixelHSV.val[1], 0,255) * 15 / 255;
+                        objects[curObject].hue = (int)(pixelHSV.val[0] * 16 / 180 + 0.5) % 16;
+                        objects[curObject].saturation = clamp(pixelHSV.val[1] * 16 / 255 + 0.5, 0, 15);
                         //printf("%i, %i\n", objects[curObject].a, objects[curObject].b);
                         pthread_mutex_unlock( &serial_lock);
 

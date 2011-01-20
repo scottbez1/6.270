@@ -1,4 +1,5 @@
 #include "vision.h"
+#include "table.h"
 
 #define bool int
 
@@ -412,14 +413,12 @@ void drawSquare(IplImage *out, IplImage *gray, CvPoint pt[4], CvPoint2D32f bit_p
 
     //black out square area in original grayscale image since it has been processed
     cvFillPoly(gray, &rect, &count, 1, CV_RGB(0,0,0), 8, 0);
-    
+
 
     if (id != -1) {
         // for debugging, draw a dot over each bit location
-        cvCircle(out, cvPoint(bit_pt_true[5].x*8, bit_pt_true[5].y*8), 3*8, CV_RGB(255,0,0),-1,CV_AA,3);
-        cvCircle(out, cvPoint(bit_pt_true[6].x*8, bit_pt_true[6].y*8), 3*8, CV_RGB(0,255,0),-1,CV_AA,3);
-        cvCircle(out, cvPoint(bit_pt_true[9].x*8, bit_pt_true[9].y*8), 3*8, CV_RGB(0,0,255),-1,CV_AA,3);
-        cvCircle(out, cvPoint(bit_pt_true[10].x*8, bit_pt_true[10].y*8), 3*8, CV_RGB(255,0,255),-1,CV_AA,3);
+        for (int i=0; i<16; i++)
+            cvCircle(out, cvPoint(bit_pt_true[i].x*8, bit_pt_true[i].y*8), 1*8, CV_RGB(255,0,0),-1,CV_AA,3);
 
         // Show the robot's ID next to it
         CvPoint center = cvPoint((pt[0].x + pt[1].x + pt[2].x + pt[3].x)/4,(pt[0].y + pt[1].y + pt[2].y + pt[3].y)/4);
@@ -429,7 +428,7 @@ void drawSquare(IplImage *out, IplImage *gray, CvPoint pt[4], CvPoint2D32f bit_p
         cvCircle(out, cvPoint(orientationHandle.x*8,orientationHandle.y*8), 5*8, CV_RGB(255,255,255),-1,CV_AA,3);
 
         //make a dot in the registration corner
-        cvCircle(out, cvPoint(bit_pt_true[0].x*8, bit_pt_true[0].y*8), 6*8, CV_RGB(255,0,0),-1,CV_AA,3);
+        cvCircle(out, cvPoint(bit_pt_true[0].x*8, bit_pt_true[0].y*8), 2*8, CV_RGB(255,0,0),-1,CV_AA,3);
     }
 }
 
@@ -510,14 +509,21 @@ int readPattern(IplImage *img, CvPoint pt[4], CvPoint2D32f bit_pt_true[16], int 
         bit_pt_raw[j] = cvPoint2D32f(.5 + j%4, .5 + j/4);
     CvMat pts = cvMat(1, 16, CV_32FC2, bit_pt_raw);
     cvPerspectiveTransform(&pts, &pts, H);
-    for (int j=0; j<16; j++)
-        bit_raw[j] = (get_5pixel_avg(img, bit_pt_raw[j].x, bit_pt_raw[j].y) > threshold);
+    for (int j=0; j<16; j++) {
+        CvScalar sample = cvGet2D(img, bit_pt_raw[j].y, bit_pt_raw[j].x);
+        bit_raw[j] =  ((sample.val[0] + sample.val[1] + sample.val[2])/3. > threshold);
+    }
     cvReleaseMat(&H);
 
-    int orientation;
-    if (!getOrientationFromBits(bit_raw, &orientation)) return 0;
+    int num=0;
+    for (int j=0; j<16; j++)
+        num |= bit_raw[j]<<j;
+
+    int orientation, dist;
+    HAMMING_DECODE(num, id, &orientation, &dist);
+    printf("%5d %2d %1d %1d\n", num, *id, orientation, dist);
+    if (dist>3) return 0;
     rotateBitsToOrientation(bit_pt_raw, bit_raw, orientation, bit_pt_true, bit_true);
-    if (!getIDFromBits(bit_true, id)) return 0;
     return 1;
 }
 

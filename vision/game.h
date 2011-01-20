@@ -1,7 +1,7 @@
 #ifndef _GAME_H_INC_
 #define _GAME_H_INC_
 
-#define MATCH_LEN_SECONDS 60
+#define MATCH_LEN_SECONDS 120
 
 #define MATCH_ENDED 0
 #define MATCH_RUNNING 1

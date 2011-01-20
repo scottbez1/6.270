@@ -62,6 +62,9 @@ CvFont font;
 CvMemStorage *storage;
 CvCapture *capture;
 
+int cvPrintf(IplImage *img, CvPoint pt, CvScalar color, const char *format, ...);
+
+
 CvPoint pickNewGoal() {
     const int inset = 600;
     const int min_sep = 768; //require goals to be at least 18in. (768 ticks) apart
@@ -256,7 +259,26 @@ void processBalls(IplImage *img, IplImage *gray, IplImage *out){
                 center.x <= X_MAX &&
                 center.y >= Y_MIN &&
                 center.y <= Y_MAX){
-                    if (curObject < NUM_OBJECTS){
+    
+                int x1 = boundRect.x;
+                int y1 = boundRect.y;
+                int x2 = boundRect.x + boundRect.width;
+                int y2 = boundRect.y + boundRect.height;
+
+                int goodPoints = 0;
+                goodPoints += get_5pixel_avg(gray,x1,y1) < 0.1; 
+                goodPoints += get_5pixel_avg(gray,x2,y1) < 0.1; 
+                goodPoints += get_5pixel_avg(gray,x1,y2) < 0.1; 
+                goodPoints += get_5pixel_avg(gray,x2,y2) < 0.1; 
+                goodPoints += get_5pixel_avg(gray,(x1+x2)/2,(y1+y2)/2) > 0.9;
+                
+                goodPoints += get_5pixel_avg(gray,(x1+x2)/2,(y1*1 + y2*3)/4) > 0.9; 
+                goodPoints += get_5pixel_avg(gray,(x1+x2)/2,(y1*3 + y2*1)/4) > 0.9; 
+                goodPoints += get_5pixel_avg(gray,(x1*1+x2*3)/4,(y1 + y2)/2) > 0.9;
+                goodPoints += get_5pixel_avg(gray,(x1*3+x2*1)/4,(y1 + y2)/2) > 0.9;
+
+                if (goodPoints >= 8){
+                if (curObject < NUM_OBJECTS){
                         int x = boundRect.x + boundRect.width/2;
                         int y = boundRect.y + boundRect.height/2;
 
@@ -288,6 +310,7 @@ void processBalls(IplImage *img, IplImage *gray, IplImage *out){
                         printf("Too many objects found!");
                         cvCircle(out, cvPoint(boundRect.x+boundRect.width/2, boundRect.y+boundRect.height/2), 10, CV_RGB(255,0,0),4, 8,0);
                     }
+                }
             }
         }
 
@@ -303,6 +326,19 @@ void processBalls(IplImage *img, IplImage *gray, IplImage *out){
     pthread_mutex_lock( &serial_lock);
     matchObjects(objects, tempObjects); 
     pthread_mutex_unlock( &serial_lock);
+
+
+    for (int i = 0; i<NUM_OBJECTS; i++) {
+        if (objects[i].id != robot_a_id &&
+            objects[i].id != robot_b_id &&
+            objects[i].id != 0xFF) {
+            continue;
+        }
+        CvPoint2D32f p = project(invProjection, cvPoint2D32f(objects[i].x,objects[i].y));
+    
+        cvPrintf(out, cvPoint(p.x,p.y), CV_RGB(255,0,0), "%i", i);
+    }
+
 }
 
 

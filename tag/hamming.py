@@ -103,7 +103,7 @@ def gen_table_sourcefiles(pts):
     c[:,1] = orientation[b[:,0]]
     c[:,2] = b[:,1]
 
-    f = open('table.c','w')
+    f = open('../vision/table.c','w')
     codes = ['%3d' % x for x in c[:,0]+(c[:,1]<<5)+(c[:,2]<<7)]
     def pretty_print(codes):
         stride = 16
@@ -113,7 +113,7 @@ def gen_table_sourcefiles(pts):
     f.write('uint16_t hamming_codes[65536] = {\n' + pretty_print(codes) + '\n};\n')
     f.close()
 
-    f = open('table.h','w')
+    f = open('../vision/table.h','w')
     f.write('#ifndef _TABLE_H_INC_\n')
     f.write('#define _TABLE_H_INC_\n\n')
     f.write('#include <stdint.h>\n\n')

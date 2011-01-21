@@ -54,7 +54,7 @@ int min_ball_dim = 6;
 int max_ball_dim = 16;
 int ball_threshold = 90;
 
-CvFont font;
+CvFont font, boldFont;
 CvMemStorage *storage;
 CvCapture *capture;
 
@@ -759,19 +759,19 @@ void updateHUD(IplImage *out) {
     last_fps = fps;
 
     if (nextMousePoint!=4)
-        cvPrintf(out, cvPoint(2, 20), CV_RGB(0,255,0), "%s: Click the %s corner", mouseOperationLabel[mouseOperation], mouseCornerLabel[nextMousePoint]);
+        cvPrintf(out, cvPoint(2, 20), CV_RGB(255,0,0), "%s: Click the %s corner", mouseOperationLabel[mouseOperation], mouseCornerLabel[nextMousePoint]);
     if (projection) {
         CvPoint corners[4], *rect = corners;
         int cornerCount = 4;
         for (int i=0; i<4; i++)
             corners[i] = cvPoint(projectionPoints[i].x*8, projectionPoints[i].y*8);
-        cvPolyLine(out, &rect, &cornerCount, 1, 1, CV_RGB(30,30,200), 2, CV_AA, 3);
+        cvPolyLine(out, &rect, &cornerCount, 1, 1, CV_RGB(0,255,255), 2, CV_AA, 3);
     }
 
-    cvPrintf(out, cvPoint(5, out->height-40), CV_RGB(255,255,0), "Score: %i", score);
+    cvPrintf(out, cvPoint(5, out->height-40), CV_RGB(0,255,255), "Score: %i", score);
 
     CvPoint textPoint = cvPoint(5, out->height-20);
-    CvScalar textColor = CV_RGB(255,255,0);
+    CvScalar textColor = CV_RGB(0,255,255);
     if (matchState == MATCH_ENDED)
         cvPrintf(out, textPoint, textColor, "Match ended.  Press <r> to start a new match.  %.1f FPS", fps);
     else if (matchState == MATCH_RUNNING) {
@@ -780,7 +780,7 @@ void updateHUD(IplImage *out) {
         //draw circle at goal
         CvPoint2D32f goalPt = cvPoint2D32f(goal.x, goal.y);
         goalPt = project(invProjection, goalPt);
-        cvCircle(out, cvPoint(goalPt.x*8, goalPt.y*8), 6*8, CV_RGB(0,0,255),-1,CV_AA,3);
+        //cvCircle(out, cvPoint(goalPt.x*8, goalPt.y*8), 6*8, CV_RGB(0,0,255),-1,CV_AA,3);
     }
 }
 
@@ -921,6 +921,7 @@ void preserveValues(int id) {
 
 int initUI() {
     cvInitFont(&font, CV_FONT_HERSHEY_SIMPLEX, 0.5, 0.5, 0, 0, CV_AA);
+    cvInitFont(&boldFont, CV_FONT_HERSHEY_SIMPLEX, 0.5, 0.5, 0, 2, CV_AA);
     cvNamedWindow( WND_MAIN, 1 );
     cvNamedWindow( WND_CONTROLS, 1);
     cvResizeWindow( WND_CONTROLS, 200, 400);

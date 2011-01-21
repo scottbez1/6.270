@@ -671,7 +671,7 @@ int readPattern(IplImage *img, CvPoint pt[4], CvPoint2D32f bit_pt_true[16], int 
     int orientation, dist;
     HAMMING_DECODE(num, id, &orientation, &dist);
     *id += 1; // 1 to 32
-    printf("%5d %2d %1d %1d\n", num, *id, orientation, dist);
+    //printf("%5d %2d %1d %1d\n", num, *id, orientation, dist);
     if (dist>3) return 0;
     rotateBitsToOrientation(bit_pt_raw, bit_raw, orientation, bit_pt_true, bit_true);
     return 1;

@@ -11,7 +11,7 @@
 #define X_MAX 2047
 
 #define Y_MIN -2048
-#define Y_MAX 0
+#define Y_MAX 2048
 
 #define FOOT 512.0
 

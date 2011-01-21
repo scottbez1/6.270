@@ -11,9 +11,6 @@ CvPoint goal;
 
 #define NUM_OBJECTS 32
 board_coord objects[NUM_OBJECTS];
-int robot_a_id;
-int robot_b_id;
-
 
 pthread_mutex_t serial_lock;
 
@@ -32,8 +29,6 @@ const char *TRK_MIN_BALL_DIM = "Min ball dimension";
 const char *TRK_MAX_BALL_DIM = "Max ball dimension";
 const char *TRK_BALL_THRESHOLD = "Ball brightness threshold";
 
-const char *TRK_ROBOT_A_ID = "Robot A id";
-const char *TRK_ROBOT_B_ID = "Robot B id";
 const char *TRK_RAND_GOAL_SEED = "Random goal seed";
 const char *TRK_CANNY_THRESHOLD = "Canny upper threshold";
 const char *TRK_HOUGH_VOTES = "Minimum Hough votes";
@@ -521,6 +516,7 @@ int readPattern(IplImage *img, CvPoint pt[4], CvPoint2D32f bit_pt_true[16], int 
 
     int orientation, dist;
     HAMMING_DECODE(num, id, &orientation, &dist);
+    *id += 1; // 1 to 32
     printf("%5d %2d %1d %1d\n", num, *id, orientation, dist);
     if (dist>3) return 0;
     rotateBitsToOrientation(bit_pt_raw, bit_raw, orientation, bit_pt_true, bit_true);
@@ -593,26 +589,25 @@ void processRobotDetection(CvPoint2D32f trueCenter, float theta, int id, CvPoint
     *orientationHandle = cvPoint2D32f(trueCenter.x + FOOT*cos(theta), trueCenter.y + FOOT*sin(theta));
     *orientationHandle = project(invProjection, *orientationHandle);
 
-    board_coord *robot;
-    if (objects[0].id == id)
-        robot = &objects[0];
-    else if (objects[1].id == id)
-        robot = &objects[1];
-    else {
-        //not a recognized robot id, ignore it
-        printf("Ignoring detected robot %i\n", id);
-        return;
-    }
+    int i;
+    if (objects[0].id == id || objects[0].id == 0xAA)
+        i=0;
+    else
+        i=1;
 
+    int x = clamp(trueCenter.x, X_MIN, X_MAX);
+    int y = clamp(trueCenter.y, Y_MIN, Y_MAX);
+    int t = theta / CV_PI * 2048;
     //store robot coordinates
     pthread_mutex_lock( &serial_lock);
-    robot->x = clamp(trueCenter.x, X_MIN, X_MAX);
-    robot->y = clamp(trueCenter.y, Y_MIN, Y_MAX);
-    robot->theta = theta / CV_PI * 2048; //change theta from +/- PI to +/-2048 (signed 12 bit int)
+    objects[i].id = id;
+    objects[i].x = x;
+    objects[i].y = y;
+    objects[i].theta = t; //change theta from +/- PI to +/-2048 (signed 12 bit int)
     pthread_mutex_unlock( &serial_lock);
 
     if (0)
-        printf("X: %04i, Y: %04i, theta: %04i, theta_act: %f, proj_x:%f, proj_y:%f \n", robot->x, robot->y, robot->theta, theta, orientationHandle->x, orientationHandle->y);
+        printf("X: %04i, Y: %04i, theta: %04i, theta_act: %f, proj_x:%f, proj_y:%f \n", x, y, t, theta, orientationHandle->x, orientationHandle->y);
 }
 
 void updateHUD(IplImage *out) {
@@ -767,9 +762,6 @@ void cleanupSerial() {
 }
 
 void preserveValues(int id) {
-    objects[0].id = robot_a_id;
-    objects[1].id = robot_b_id;
-
     int params[] = {
         ball_threshold,
         canny_threshold,
@@ -800,16 +792,12 @@ int initUI() {
     cvCreateTrackbar( TRK_TOLERANCE, WND_CONTROLS, &side_tolerance, 300, &preserveValues);
     cvCreateTrackbar( TRK_MIN_AREA, WND_CONTROLS, &min_area, 10000, &preserveValues);
     cvCreateTrackbar( TRK_MAX_AREA, WND_CONTROLS, &max_area, 10000, &preserveValues);
-    cvCreateTrackbar( TRK_ROBOT_A_ID, WND_CONTROLS, &robot_a_id, MAX_ROBOT_ID-1, &preserveValues);
-    cvCreateTrackbar( TRK_ROBOT_B_ID, WND_CONTROLS, &robot_b_id, MAX_ROBOT_ID-1, &preserveValues);
     cvCreateTrackbar( TRK_RAND_GOAL_SEED, WND_CONTROLS, &randomGoalSeed, 5000, &preserveValues);
     cvCreateTrackbar( TRK_CANNY_THRESHOLD, WND_CONTROLS, &canny_threshold, 255, &preserveValues);
     cvCreateTrackbar( TRK_HOUGH_VOTES, WND_CONTROLS, &hough_votes, 100, &preserveValues);
-    
     cvCreateTrackbar( TRK_MIN_BALL_DIM, WND_CONTROLS, &min_ball_dim, 50, &preserveValues);
     cvCreateTrackbar( TRK_MAX_BALL_DIM, WND_CONTROLS, &max_ball_dim, 50, &preserveValues);
     cvCreateTrackbar( TRK_BALL_THRESHOLD, WND_CONTROLS, &ball_threshold, 255, &preserveValues);
-    
 
     cvSetMouseCallback(WND_MAIN,mouseHandler, NULL);
 
@@ -872,8 +860,8 @@ void cleanupCV() {
 }
 
 int initGame() {
-    objects[0].id=14;
-    objects[1].id=7;
+    objects[0].id=170;
+    objects[1].id=170;
     return 0;
 }
 
@@ -1022,8 +1010,6 @@ int main(int argc, char** argv) {
         max_ball_dim = CV_MAT_ELEM(*params, int, 4, 0);
         min_area = CV_MAT_ELEM(*params, int, 5, 0);
         min_ball_dim = CV_MAT_ELEM(*params, int, 6, 0);
-        objects[0].id = CV_MAT_ELEM(*params, int, 7, 0);
-        objects[1].id = CV_MAT_ELEM(*params, int, 8, 0);
         randomGoalSeed = CV_MAT_ELEM(*params, int, 9, 0);
         side_tolerance = CV_MAT_ELEM(*params, int, 10, 0);
         threshold = CV_MAT_ELEM(*params, int, 11, 0);

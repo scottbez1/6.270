@@ -71,7 +71,7 @@ def attempt(n=None,M=32,visual=False):
 
 def gen_numbers():
     pts,a=attempt()
-    open('numbers', 'w').write('\n'.join([str(pt) for pt in pts]))
+    open('numbers', 'w').write('\n'.join([str(pt) for pt in pts]) + '\n')
     return pts
 
 def gen_table_sourcefiles(pts):

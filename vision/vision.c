@@ -54,7 +54,7 @@ int min_ball_dim = 6;
 int max_ball_dim = 16;
 int ball_threshold = 90;
 
-CvFont font;
+CvFont font, boldFont;
 CvMemStorage *storage;
 CvCapture *capture;
 
@@ -234,15 +234,15 @@ void processBalls(IplImage *img, IplImage *gray, IplImage *out){
 
 
     int curObject = 2;
-   
+
 
     board_coord tempObjects[NUM_OBJECTS];
 
     // test each contour
     while( contours ) {
-        
+
         CvRect boundRect = cvBoundingRect(contours, 0);
-       
+
         if (boundRect.width >= min_ball_dim &&
             boundRect.width <= max_ball_dim &&
             boundRect.height>= min_ball_dim &&
@@ -259,30 +259,31 @@ void processBalls(IplImage *img, IplImage *gray, IplImage *out){
             }
 
             //check to make sure the boundRect is relatively square
-            if (lesserDim >= 0.8 * greaterDim){
+            if (lesserDim < 0.8 * greaterDim)
+                continue;
 
             CvPoint2D32f center = project(projection, cvPoint2D32f(boundRect.x + boundRect.width/2,boundRect.y+boundRect.height/2));
-            
+
             //check if the contour is within the playing field
             if (center.x >= X_MIN &&
                 center.x <= X_MAX &&
                 center.y >= Y_MIN &&
                 center.y <= Y_MAX){
-    
+
                 int x1 = boundRect.x;
                 int y1 = boundRect.y;
                 int x2 = boundRect.x + boundRect.width;
                 int y2 = boundRect.y + boundRect.height;
 
                 int goodPoints = 0;
-                goodPoints += get_5pixel_avg(gray,x1,y1) < 0.1; 
-                goodPoints += get_5pixel_avg(gray,x2,y1) < 0.1; 
-                goodPoints += get_5pixel_avg(gray,x1,y2) < 0.1; 
-                goodPoints += get_5pixel_avg(gray,x2,y2) < 0.1; 
+                goodPoints += get_5pixel_avg(gray,x1,y1) < 0.1;
+                goodPoints += get_5pixel_avg(gray,x2,y1) < 0.1;
+                goodPoints += get_5pixel_avg(gray,x1,y2) < 0.1;
+                goodPoints += get_5pixel_avg(gray,x2,y2) < 0.1;
                 goodPoints += get_5pixel_avg(gray,(x1+x2)/2,(y1+y2)/2) > 0.9;
-                
-                goodPoints += get_5pixel_avg(gray,(x1+x2)/2,(y1*1 + y2*3)/4) > 0.9; 
-                goodPoints += get_5pixel_avg(gray,(x1+x2)/2,(y1*3 + y2*1)/4) > 0.9; 
+
+                goodPoints += get_5pixel_avg(gray,(x1+x2)/2,(y1*1 + y2*3)/4) > 0.9;
+                goodPoints += get_5pixel_avg(gray,(x1+x2)/2,(y1*3 + y2*1)/4) > 0.9;
                 goodPoints += get_5pixel_avg(gray,(x1*1+x2*3)/4,(y1 + y2)/2) > 0.9;
                 goodPoints += get_5pixel_avg(gray,(x1*3+x2*1)/4,(y1 + y2)/2) > 0.9;
 
@@ -312,15 +313,12 @@ void processBalls(IplImage *img, IplImage *gray, IplImage *out){
 
                         curObject++;
 
-                        cvCircle(out, cvPoint(boundRect.x+boundRect.width/2, boundRect.y+boundRect.height/2), 10, CV_RGB(0,200,0),2, 8,0);
-                        
-
+                        cvCircle(out, cvPoint(boundRect.x+boundRect.width/2, boundRect.y+boundRect.height/2), 10, CV_RGB(0,255,255),2, CV_AA,0);
                     } else {
                         printf("Too many objects found!");
-                        cvCircle(out, cvPoint(boundRect.x+boundRect.width/2, boundRect.y+boundRect.height/2), 10, CV_RGB(255,0,0),4, 8,0);
+                        cvCircle(out, cvPoint(boundRect.x+boundRect.width/2, boundRect.y+boundRect.height/2), 10, CV_RGB(255,0,0), 4, CV_AA,0);
                     }
 
-                }
                 }
             }
         }
@@ -333,19 +331,19 @@ void processBalls(IplImage *img, IplImage *gray, IplImage *out){
     for (; curObject < NUM_OBJECTS; curObject++){
         tempObjects[curObject].id = 0xAA;
     }
-    
+
     pthread_mutex_lock( &serial_lock);
-    matchObjects(objects, tempObjects); 
+    matchObjects(objects, tempObjects);
     pthread_mutex_unlock( &serial_lock);
 
 
-    for (int i = 0; i<NUM_OBJECTS; i++) {
+    for (int i = 2; i<NUM_OBJECTS; i++) {
         if (objects[i].id != 0xFF) {
             continue;
         }
         CvPoint2D32f p = project(invProjection, cvPoint2D32f(objects[i].x,objects[i].y));
     
-        cvPrintf(out, cvPoint(p.x,p.y+10), CV_RGB(255,0,0), "%i", i);
+        //cvPrintf(out, cvPoint(p.x,p.y+10), CV_RGB(255,0,0), "%i", i);
     }
 
 }
@@ -448,32 +446,139 @@ int cvPrintf(IplImage *img, CvPoint pt, CvScalar color, const char *format, ...)
     return count;
 }
 
-void drawSquare(IplImage *out, IplImage *gray, CvPoint pt[4], CvPoint2D32f bit_pt_true[16], int id, CvPoint2D32f orientationHandle) {
-    // draw the square as a closed polyline
-    CvPoint *rect = pt;
-    int count = 4;
-    cvPolyLine(out, &rect, &count, 1, 1, CV_RGB(0,0,255), 2, CV_AA, 0 );
+void getBitSamplingTransform(CvPoint pt[4], CvMat **H);
 
+void estimateReticleParams(CvMat *H, float *cx, float *cy, float *radius, float *theta) {
+    CvPoint2D32f vf[3];
+    CvMat m = cvMat(1, 3, CV_32FC2, vf);
+    vf[0] = cvPoint2D32f(2.0, 2.0);
+    vf[1] = cvPoint2D32f(3.0, 2.0);
+    vf[2] = cvPoint2D32f(2.0, 3.0);
+    cvPerspectiveTransform(&m, &m, H);
+    *cx = vf[0].x;
+    *cy = vf[0].y;
+    float a = sqrt((vf[1].x-vf[0].x)*(vf[1].x-vf[0].x) + (vf[1].y-vf[0].y)*(vf[1].y-vf[0].y));
+    float b = sqrt((vf[2].x-vf[0].x)*(vf[2].x-vf[0].x) + (vf[2].y-vf[0].y)*(vf[2].y-vf[0].y));
+    *radius = sqrt(a*b)*5;
+
+    vf[0] = cvPoint2D32f(0.0, 0.0);
+    vf[1] = cvPoint2D32f(cos(*theta), sin(*theta));
+    cvPerspectiveTransform(&m, &m, invProjection);
+    *theta = -atan2(vf[1].y-vf[0].y, vf[1].x-vf[0].x);
+}
+
+void drawChevron(IplImage *out, float theta, float alpha, float dtheta, float t, int big, float cx, float cy, float radius) {
+    CvPoint v[4];
+    CvPoint2D32f vf[4];
+    CvMat m = cvMat(1, 4, CV_32FC2, vf);
+    CvPoint *p[1];
+    int count[1];
+
+    if (big)
+        dtheta = acos((1.0/alpha) * (1 + t/(2.0*radius)));
+    else
+        alpha -= t/(2.0*radius);
+
+    v[0] = cvPoint(8*(cx + radius*      cos(theta+dtheta)), 8*(cy - radius*      sin(theta+dtheta)));
+    v[1] = cvPoint(8*(cx + radius*alpha*cos(theta       )), 8*(cy - radius*alpha*sin(theta       )));
+    v[2] = cvPoint(8*(cx + radius*      cos(theta-dtheta)), 8*(cy - radius*      sin(theta-dtheta)));
+    v[3] = cvPoint(8*(cx + radius*      cos(theta       )), 8*(cy - radius*      sin(theta       )));
+    p[0] = &v[0];
+    count[0] = 4;
+    cvFillPoly(out, p, count, 1, CV_RGB(0,255,255), CV_AA, 3);
+}
+
+void drawCallout(IplImage *out, float cx, float cy, float radius, int id) {
+    CvPoint v[4];
+    CvPoint2D32f vf[4];
+    CvMat m = cvMat(1, 4, CV_32FC2, vf);
+    CvPoint *p[1];
+    int count[1];
+
+    char buf[256];
+    sprintf(buf, "Team %i", id);
+    CvSize textSize;
+    int baseline;
+    cvGetTextSize(buf, &font, &textSize, &baseline);
+
+    cvPrintf(out, cvPoint(cx-textSize.width/2.0, cy+radius+25-baseline), CV_RGB(0,255,255), "Team %i", id);
+
+    v[0] = cvPoint(8*(cx-radius), 8*(cy));
+    v[1] = cvPoint(8*(cx-(radius+15)), 8*(cy));
+    v[2] = cvPoint(8*(cx-(radius+15)), 8*(cy+radius+25));
+    v[3] = cvPoint(8*(cx+textSize.width/2), 8*(cy+radius+25));
+
+    p[0] = &v[0];
+    count[0] = 4;
+
+    cvPolyLine(out, p, count, 1, 0, CV_RGB(0,255,255), 1, CV_AA, 3);
+}
+
+void drawSquare(IplImage *out, IplImage *gray, CvPoint pt[4], CvPoint2D32f bit_pt_true[16], int id, CvPoint2D32f orientationHandle, float theta) {
+    // draw the square as a closed polyline
+    CvPoint v[20];
+    CvPoint2D32f vf[20];
+    CvMat m = cvMat(1, 20, CV_32FC2, vf);
+    CvPoint *p[10];
+    int count[10];
 
     //black out square area in original grayscale image since it has been processed
-    cvFillPoly(gray, &rect, &count, 1, CV_RGB(0,0,0), 8, 0);
+    p[0] = pt;
+    count[0] = 4;
+    cvFillPoly(gray, p, count, 1, CV_RGB(0,0,0), 8, 0);
 
+    if (id == -1)
+        return;
 
-    if (id != -1) {
-        // for debugging, draw a dot over each bit location
-        for (int i=0; i<16; i++)
-            cvCircle(out, cvPoint(bit_pt_true[i].x*8, bit_pt_true[i].y*8), 1*8, CV_RGB(255,0,0),-1,CV_AA,3);
+    float l = -1.0, r=5.0;
+    CvMat *H;
+    getBitSamplingTransform(pt, &H);
+    vf[0] = cvPoint2D32f(l, l);
+    vf[1] = cvPoint2D32f(r, l);
+    vf[2] = cvPoint2D32f(r, r);
+    vf[3] = cvPoint2D32f(l, r);
+    cvPerspectiveTransform(&m, &m, H);
 
-        // Show the robot's ID next to it
-        CvPoint center = cvPoint((pt[0].x + pt[1].x + pt[2].x + pt[3].x)/4,(pt[0].y + pt[1].y + pt[2].y + pt[3].y)/4);
-        cvPrintf(out, cvPoint(center.x-20, center.y+40), CV_RGB(255,255,0), "Robot %i", id);
+    for (int i=0; i<4; i++)
+        v[i] = cvPoint(vf[i].x*8, vf[i].y*8);
+    p[0] = v;
+    count[0] = 4;
 
-        // draw a white circle at the extended point
-        cvCircle(out, cvPoint(orientationHandle.x*8,orientationHandle.y*8), 5*8, CV_RGB(255,255,255),-1,CV_AA,3);
+    cvFillPoly(out, p, count, 1, CV_RGB(0,0,0), CV_AA, 3);
 
-        //make a dot in the registration corner
-        cvCircle(out, cvPoint(bit_pt_true[0].x*8, bit_pt_true[0].y*8), 2*8, CV_RGB(255,0,0),-1,CV_AA,3);
+    for (int i=0; i<5; i++) {
+        vf[2*i+ 0] = cvPoint2D32f(i,l);
+        vf[2*i+ 1] = cvPoint2D32f(i,r);
+        vf[2*i+10] = cvPoint2D32f(l,i);
+        vf[2*i+11] = cvPoint2D32f(r,i);
+        p[i+0] = &v[2*i+0];
+        count[i+0] = 2;
+        p[i+5] = &v[2*i+10];
+        count[i+5] = 2;
     }
+    cvPerspectiveTransform(&m, &m, H);
+    for (int i=0; i<20; i++)
+        v[i] = cvPoint(vf[i].x*8, vf[i].y*8);
+    cvPolyLine(out, p, count, 10, 0, CV_RGB(0,255,255), 1, CV_AA, 3);
+
+    float cx, cy, radius, thetaCorrection;
+    estimateReticleParams(H, &cx, &cy, &radius, &theta);
+
+    float t = 2.0;
+    cvCircle(out, cvPoint(cx*8,cy*8), radius*8, CV_RGB(0,255,255), t, CV_AA, 3);
+
+    drawChevron(out, theta, 1.3, 0., t, 1, cx, cy, radius);
+    drawChevron(out, theta+M_PI/4,   0.9, .1, t, 0, cx, cy, radius);
+    drawChevron(out, theta-M_PI/4,   0.9, .1, t, 0, cx, cy, radius);
+    drawChevron(out, theta+3*M_PI/4, 0.9, .1, t, 0, cx, cy, radius);
+    drawChevron(out, theta-3*M_PI/4, 0.9, .1, t, 0, cx, cy, radius);
+
+    for (int i=0; i<4; i++)
+        drawChevron(out, theta+i*M_PI/2, 0.5, .01, t, 0, cx, cy, radius);
+
+    cvReleaseMat(&H);
+
+    drawCallout(out, cx, cy, radius, id);
 }
 
 void getBitSamplingTransform(CvPoint pt[4], CvMat **H) {
@@ -669,19 +774,19 @@ void updateHUD(IplImage *out) {
     last_fps = fps;
 
     if (nextMousePoint!=4)
-        cvPrintf(out, cvPoint(2, 20), CV_RGB(0,255,0), "%s: Click the %s corner", mouseOperationLabel[mouseOperation], mouseCornerLabel[nextMousePoint]);
+        cvPrintf(out, cvPoint(2, 20), CV_RGB(255,0,0), "%s: Click the %s corner", mouseOperationLabel[mouseOperation], mouseCornerLabel[nextMousePoint]);
     if (projection) {
         CvPoint corners[4], *rect = corners;
         int cornerCount = 4;
         for (int i=0; i<4; i++)
             corners[i] = cvPoint(projectionPoints[i].x*8, projectionPoints[i].y*8);
-        cvPolyLine(out, &rect, &cornerCount, 1, 1, CV_RGB(30,30,200), 2, CV_AA, 3);
+        cvPolyLine(out, &rect, &cornerCount, 1, 1, CV_RGB(0,255,255), 2, CV_AA, 3);
     }
 
-    cvPrintf(out, cvPoint(5, out->height-40), CV_RGB(255,255,0), "Score: %i", score);
+    cvPrintf(out, cvPoint(5, out->height-40), CV_RGB(0,255,255), "Score: %i", score);
 
     CvPoint textPoint = cvPoint(5, out->height-20);
-    CvScalar textColor = CV_RGB(255,255,0);
+    CvScalar textColor = CV_RGB(0,255,255);
     if (matchState == MATCH_ENDED)
         cvPrintf(out, textPoint, textColor, "Match ended.  Press <r> to start a new match.  %.1f FPS", fps);
     else if (matchState == MATCH_RUNNING) {
@@ -691,7 +796,7 @@ void updateHUD(IplImage *out) {
         //draw circle at goal
         CvPoint2D32f goalPt = cvPoint2D32f(goal.x, goal.y);
         goalPt = project(invProjection, goalPt);
-        cvCircle(out, cvPoint(goalPt.x*8, goalPt.y*8), 6*8, CV_RGB(0,0,255),-1,CV_AA,3);
+        //cvCircle(out, cvPoint(goalPt.x*8, goalPt.y*8), 6*8, CV_RGB(0,0,255),-1,CV_AA,3);
     }
 }
 
@@ -721,7 +826,7 @@ void processSquares( IplImage *img, IplImage *out, IplImage *grayscale, CvSeq *s
             theta = getThetaFromExtension(bit_pt_true, trueCenter);
         processRobotDetection(trueCenter, theta, id, &orientationHandle);
 
-        drawSquare(out, grayscale, pt, bit_pt_true, id, orientationHandle);
+        drawSquare(out, grayscale, pt, bit_pt_true, id, orientationHandle, theta);
     }
 
     updateHUD(out);
@@ -741,7 +846,7 @@ void processCircles( IplImage *img, IplImage *out, CvSeq *circles ) {
     // read 4 sequence elements at a time (all vertices of a square)
     for(int i=0; i<circles->total; i++) {
         circle = (circle_t *)cvGetSeqElem(circles, i);
-        cvCircle(out, cvPoint(circle->x*8, circle->y*8), circle->r*8, CV_RGB(255,0,0), 2, 8, 3);
+        cvCircle(out, cvPoint(circle->x*8, circle->y*8), circle->r*8, CV_RGB(255,255,0), 2, 8, 3);
         printf("Circle %.0f, %.0f, %.0f\n", circle->x, circle->y, circle->r);
     }
 }
@@ -831,7 +936,8 @@ void preserveValues(int id) {
 }
 
 int initUI() {
-    cvInitFont(&font, CV_FONT_HERSHEY_SIMPLEX, 0.5, 0.5, 0, 2, CV_AA);
+    cvInitFont(&font, CV_FONT_HERSHEY_SIMPLEX, 0.5, 0.5, 0, 0, CV_AA);
+    cvInitFont(&boldFont, CV_FONT_HERSHEY_SIMPLEX, 0.5, 0.5, 0, 2, CV_AA);
     cvNamedWindow( WND_MAIN, 1 );
     cvNamedWindow( WND_CONTROLS, 1);
     cvResizeWindow( WND_CONTROLS, 200, 400);

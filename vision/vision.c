@@ -247,7 +247,20 @@ void processBalls(IplImage *img, IplImage *gray, IplImage *out){
             boundRect.width <= max_ball_dim &&
             boundRect.height>= min_ball_dim &&
             boundRect.height<= max_ball_dim){
-           
+    
+            int lesserDim, greaterDim;
+
+            if (boundRect.width>boundRect.height){
+                lesserDim = boundRect.height;
+                greaterDim = boundRect.width;
+            } else {
+                lesserDim = boundRect.width;
+                greaterDim = boundRect.height;
+            }
+
+            //check to make sure the boundRect is relatively square
+            if (lesserDim >= 0.8 * greaterDim){
+
             CvPoint2D32f center = project(projection, cvPoint2D32f(boundRect.x + boundRect.width/2,boundRect.y+boundRect.height/2));
             
             //check if the contour is within the playing field
@@ -306,6 +319,8 @@ void processBalls(IplImage *img, IplImage *gray, IplImage *out){
                         printf("Too many objects found!");
                         cvCircle(out, cvPoint(boundRect.x+boundRect.width/2, boundRect.y+boundRect.height/2), 10, CV_RGB(255,0,0),4, 8,0);
                     }
+
+                }
                 }
             }
         }
@@ -325,14 +340,12 @@ void processBalls(IplImage *img, IplImage *gray, IplImage *out){
 
 
     for (int i = 0; i<NUM_OBJECTS; i++) {
-        if (objects[i].id != robot_a_id &&
-            objects[i].id != robot_b_id &&
-            objects[i].id != 0xFF) {
+        if (objects[i].id != 0xFF) {
             continue;
         }
         CvPoint2D32f p = project(invProjection, cvPoint2D32f(objects[i].x,objects[i].y));
     
-        cvPrintf(out, cvPoint(p.x,p.y), CV_RGB(255,0,0), "%i", i);
+        cvPrintf(out, cvPoint(p.x,p.y+10), CV_RGB(255,0,0), "%i", i);
     }
 
 }
@@ -453,7 +466,7 @@ void drawSquare(IplImage *out, IplImage *gray, CvPoint pt[4], CvPoint2D32f bit_p
 
         // Show the robot's ID next to it
         CvPoint center = cvPoint((pt[0].x + pt[1].x + pt[2].x + pt[3].x)/4,(pt[0].y + pt[1].y + pt[2].y + pt[3].y)/4);
-        cvPrintf(out, cvPoint(center.x-20, center.y+50), CV_RGB(255,255,0), "Robot %i", id);
+        cvPrintf(out, cvPoint(center.x-20, center.y+40), CV_RGB(255,255,0), "Robot %i", id);
 
         // draw a white circle at the extended point
         cvCircle(out, cvPoint(orientationHandle.x*8,orientationHandle.y*8), 5*8, CV_RGB(255,255,255),-1,CV_AA,3);
@@ -672,7 +685,8 @@ void updateHUD(IplImage *out) {
     if (matchState == MATCH_ENDED)
         cvPrintf(out, textPoint, textColor, "Match ended.  Press <r> to start a new match.  %.1f FPS", fps);
     else if (matchState == MATCH_RUNNING) {
-        cvPrintf(out, textPoint, textColor, "Remaining time: 00:%6.3f seconds.  %.1f FPS", MATCH_LEN_SECONDS - (now - matchStartTime), fps);
+        float s = MATCH_LEN_SECONDS - (now - matchStartTime);
+        cvPrintf(out, textPoint, textColor, "Remaining time: %02d:%6.3f seconds.  %.1f FPS", ((int)s)/60, fmod(s,60), fps);
 
         //draw circle at goal
         CvPoint2D32f goalPt = cvPoint2D32f(goal.x, goal.y);
@@ -1077,6 +1091,7 @@ int main(int argc, char** argv) {
             grayscale = cvCreateImage(cvSize(img->width, img->height), 8, 1);
         cvCvtColor(img, grayscale, CV_BGR2GRAY);
         CvSeq *squares = findCandidateSquares(grayscale); 
+        objects[0].id = 0xAA;
         processSquares(img, out, grayscale, squares);
 
 

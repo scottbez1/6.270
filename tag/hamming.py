@@ -49,6 +49,7 @@ else:
     r = arange(N)
     r = 1 + ((r&0x30)>>3) | ((r&0x40)>>2) | ((r&0x03)<<5) | (r&0x180) | ((r&0x0c)<<7) | ((r&0x200)<<2) | (((r>>12)>0)<<12) | ((r&0xc00)<<3) | (((r>>12)>1)<<15)
 
+random.seed(1338)
 random.shuffle(r)
 
 def attempt(n=None,M=32,visual=False):
@@ -68,7 +69,64 @@ def attempt(n=None,M=32,visual=False):
     print pts[0],amin(a[:,where(r==pts[:,newaxis])[1]]+100*eye(M,M,0,int8)),mean(on),std(on)
     return pts,a
 
-pts,a=attempt()
-#figure(3);clf();plot(mean(a,axis=1))
+def gen_numbers():
+    pts,a=attempt()
+    open('numbers', 'w').write('\n'.join([str(pt) for pt in pts]) + '\n')
+    return pts
 
-open('numbers', 'w').write('\n'.join([str(pt) for pt in pts]))
+def gen_table_sourcefiles(pts):
+    base = sort(rr[:,pts].flatten())
+
+    team = zeros(base.size)
+    orientation = zeros(base.size)
+    for i,x in enumerate(base):
+        source = where(rr[:,pts]==x)
+        team[i] = source[1][0]
+        orientation[i] = source[0][0]
+
+    b = zeros((65536,2),dtype=int)
+    b[:,1] = 32
+    b[base,0] = arange(base.size)
+    b[base,1] = 0
+    def mutate(i):
+        return c_[arange(i.size,dtype=int)[:,newaxis], i^(1<<arange(0,16)[newaxis,:])]
+
+    m = mutate(arange(65536)[:,newaxis])
+    while sum(b[:,1]==32):
+        best = m[(arange(65536),argmin(b[m,1],axis=1))]
+        b[:,0] = b[best,0]
+        cost = b[best,1]
+        b[:,1] = where(cost==32,32,where(best!=arange(65536),cost+1,cost))
+
+    c = zeros((65536,3),dtype=int)
+    c[:,0] = team[b[:,0]]
+    c[:,1] = orientation[b[:,0]]
+    c[:,2] = b[:,1]
+
+    f = open('../vision/table.c','w')
+    codes = ['%3d' % x for x in c[:,0]+(c[:,1]<<5)+(c[:,2]<<7)]
+    def pretty_print(codes):
+        stride = 16
+        return '    ' + ',\n    '.join(', '.join(codes[i:i+stride]) for i in xrange(0,len(codes),stride))
+
+    f.write('#include "table.h"\n\n// Generated automatically\n\n')
+    f.write('uint16_t hamming_codes[65536] = {\n' + pretty_print(codes) + '\n};\n')
+    f.close()
+
+    f = open('../vision/table.h','w')
+    f.write('#ifndef _TABLE_H_INC_\n')
+    f.write('#define _TABLE_H_INC_\n\n')
+    f.write('#include <stdint.h>\n\n')
+    f.write('// Generated automatically\n\n')
+    f.write('extern uint16_t hamming_codes[65536];\n\n')
+    f.write('#define HAMMING_DECODE(_num_, _pid_, _porient_, _pdist_) { \\\n')
+    f.write('    int entry = hamming_codes[_num_];  \\\n')
+    f.write('    *(_pid_) = entry & 0x1F;           \\\n')
+    f.write('    *(_porient_) = (entry & 0x60) >> 5; \\\n')
+    f.write('    *(_pdist_) = (entry & 0x380) >> 7; \\\n')
+    f.write('}\n\n')
+    f.write('#endif\n')
+    f.close()
+
+pts = gen_numbers()
+gen_table_sourcefiles(pts)

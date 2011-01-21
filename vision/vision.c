@@ -243,6 +243,9 @@ void processBalls(IplImage *img, IplImage *gray, IplImage *out){
 
         CvRect boundRect = cvBoundingRect(contours, 0);
 
+        // take the next contour
+        contours = contours->h_next;
+
         if (boundRect.width >= min_ball_dim &&
             boundRect.width <= max_ball_dim &&
             boundRect.height>= min_ball_dim &&
@@ -322,9 +325,6 @@ void processBalls(IplImage *img, IplImage *gray, IplImage *out){
                 }
             }
         }
-
-        // take the next contour
-        contours = contours->h_next;
     }
 
     //zero all other objects

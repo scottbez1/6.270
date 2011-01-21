@@ -324,10 +324,8 @@ void processBalls(IplImage *img, IplImage *gray, IplImage *out){
     pthread_mutex_unlock( &serial_lock);
 
 
-    for (int i = 0; i<NUM_OBJECTS; i++) {
-        if (objects[i].id != robot_a_id &&
-            objects[i].id != robot_b_id &&
-            objects[i].id != 0xFF) {
+    for (int i = 2; i<NUM_OBJECTS; i++) {
+        if (objects[i].id != 0xFF) {
             continue;
         }
         CvPoint2D32f p = project(invProjection, cvPoint2D32f(objects[i].x,objects[i].y));

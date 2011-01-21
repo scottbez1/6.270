@@ -234,42 +234,42 @@ void processBalls(IplImage *img, IplImage *gray, IplImage *out){
 
 
     int curObject = 2;
-   
+
 
     board_coord tempObjects[NUM_OBJECTS];
 
     // test each contour
     while( contours ) {
-        
+
         CvRect boundRect = cvBoundingRect(contours, 0);
-       
+
         if (boundRect.width >= min_ball_dim &&
             boundRect.width <= max_ball_dim &&
             boundRect.height>= min_ball_dim &&
             boundRect.height<= max_ball_dim){
-           
+
             CvPoint2D32f center = project(projection, cvPoint2D32f(boundRect.x + boundRect.width/2,boundRect.y+boundRect.height/2));
-            
+
             //check if the contour is within the playing field
             if (center.x >= X_MIN &&
                 center.x <= X_MAX &&
                 center.y >= Y_MIN &&
                 center.y <= Y_MAX){
-    
+
                 int x1 = boundRect.x;
                 int y1 = boundRect.y;
                 int x2 = boundRect.x + boundRect.width;
                 int y2 = boundRect.y + boundRect.height;
 
                 int goodPoints = 0;
-                goodPoints += get_5pixel_avg(gray,x1,y1) < 0.1; 
-                goodPoints += get_5pixel_avg(gray,x2,y1) < 0.1; 
-                goodPoints += get_5pixel_avg(gray,x1,y2) < 0.1; 
-                goodPoints += get_5pixel_avg(gray,x2,y2) < 0.1; 
+                goodPoints += get_5pixel_avg(gray,x1,y1) < 0.1;
+                goodPoints += get_5pixel_avg(gray,x2,y1) < 0.1;
+                goodPoints += get_5pixel_avg(gray,x1,y2) < 0.1;
+                goodPoints += get_5pixel_avg(gray,x2,y2) < 0.1;
                 goodPoints += get_5pixel_avg(gray,(x1+x2)/2,(y1+y2)/2) > 0.9;
-                
-                goodPoints += get_5pixel_avg(gray,(x1+x2)/2,(y1*1 + y2*3)/4) > 0.9; 
-                goodPoints += get_5pixel_avg(gray,(x1+x2)/2,(y1*3 + y2*1)/4) > 0.9; 
+
+                goodPoints += get_5pixel_avg(gray,(x1+x2)/2,(y1*1 + y2*3)/4) > 0.9;
+                goodPoints += get_5pixel_avg(gray,(x1+x2)/2,(y1*3 + y2*1)/4) > 0.9;
                 goodPoints += get_5pixel_avg(gray,(x1*1+x2*3)/4,(y1 + y2)/2) > 0.9;
                 goodPoints += get_5pixel_avg(gray,(x1*3+x2*1)/4,(y1 + y2)/2) > 0.9;
 
@@ -318,9 +318,9 @@ void processBalls(IplImage *img, IplImage *gray, IplImage *out){
     for (; curObject < NUM_OBJECTS; curObject++){
         tempObjects[curObject].id = 0xAA;
     }
-    
+
     pthread_mutex_lock( &serial_lock);
-    matchObjects(objects, tempObjects); 
+    matchObjects(objects, tempObjects);
     pthread_mutex_unlock( &serial_lock);
 
 
@@ -329,7 +329,7 @@ void processBalls(IplImage *img, IplImage *gray, IplImage *out){
             continue;
         }
         CvPoint2D32f p = project(invProjection, cvPoint2D32f(objects[i].x,objects[i].y));
-    
+
         cvPrintf(out, cvPoint(p.x,p.y), CV_RGB(255,0,0), "%i", i);
     }
 

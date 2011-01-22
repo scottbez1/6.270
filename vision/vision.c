@@ -76,11 +76,30 @@ CvPoint pickNewGoal() {
 }
 
 CvMat *projection = 0; // maps from frame coords to physical coords
+CvMat *displayMatrix = 0; // maps from physical coords to display coords
 CvMat *invProjection = 0; // maps from physical coords to frame coords
+
+int warpDisplay = 0;
 
 CvPoint2D32f projectionPoints[4];
 CvPoint2D32f sampleCorners[4];
 int sampleColors = 0;
+
+void computeDisplayMatrix() {
+    if (displayMatrix)
+        cvReleaseMat(&displayMatrix);
+    if (warpDisplay) {
+        CvMat *M = cvCreateMat(3,3, CV_32FC1);
+
+        CvPoint2D32f src[4] = {cvPoint2D32f(X_MIN,Y_MAX),cvPoint2D32f(X_MAX,Y_MAX),cvPoint2D32f(X_MAX,Y_MIN),cvPoint2D32f(X_MIN,Y_MIN)};
+        CvPoint2D32f dst[4] = {cvPoint2D32f(0,0),cvPoint2D32f(frameHeight,0),cvPoint2D32f(frameHeight,frameHeight),cvPoint2D32f(0,frameHeight)};
+
+        cvGetPerspectiveTransform(src, dst, M);
+
+        displayMatrix = M;
+    } else
+        displayMatrix = cvCloneMat(invProjection);
+}
 
 void mouseHandler(int event, int x, int y, int flags, void *param) {
     CvPoint2D32f point = cvPoint2D32f(x,y);
@@ -95,6 +114,7 @@ void mouseHandler(int event, int x, int y, int flags, void *param) {
             switch (mouseOperation) {
                 case PICK_PROJECTION_CORNERS:
                     projection_init(&projection, &invProjection, projectionPoints, bounds);
+                    computeDisplayMatrix();
                     CvMat matrix = cvMat(4,1,CV_32FC2,projectionPoints);
                     cvSave( "Projection.xml", &matrix, 0, 0, cvAttrList(0, 0) );
                     printf("project init %s\n", (projection && invProjection) ? "succeeded" : "failed");
@@ -282,7 +302,7 @@ void processBalls(IplImage *img, IplImage *gray, IplImage *out){
                 goodPoints += get_5pixel_avg(gray,(x1*3+x2*1)/4,(y1 + y2)/2) > 0.9;
 
                 if (goodPoints >= 8){
-                    CvPoint2D32f display_pt = project(invProjection, center);
+                    CvPoint2D32f display_pt = project(displayMatrix, center);
                     CvScalar color = CV_RGB(0,255,255);
                     int thickness = 2;
                     if (curObject < NUM_OBJECTS){
@@ -330,7 +350,7 @@ void processBalls(IplImage *img, IplImage *gray, IplImage *out){
         if (objects[i].id != 0xFF) {
             continue;
         }
-        CvPoint2D32f p = project(invProjection, cvPoint2D32f(objects[i].x,objects[i].y));
+        CvPoint2D32f p = project(displayMatrix, cvPoint2D32f(objects[i].x,objects[i].y));
 
         char buf[256];
         sprintf(buf, "%d", i);
@@ -530,8 +550,16 @@ void drawSquare(IplImage *out, IplImage *gray, CvPoint pt[4], CvPoint2D32f bit_p
         return;
 
     float l = -1.0, r=5.0;
-    CvMat *H;
-    getBitSamplingTransform(pt, &H);
+    CvMat *H = cvCreateMat(3,3,CV_32FC1); // tag coords to display coords
+    CvMat *A = 0;                         // tag coords to frame coords
+    CvMat *B = cvCreateMat(3,3,CV_32FC1); // frame coords to display coords
+
+    getBitSamplingTransform(pt, &A);
+    cvMatMul(displayMatrix, projection, B);
+    cvMatMul(B, A, H);
+    cvReleaseMat(&A);
+    cvReleaseMat(&B);
+
     vf[0] = cvPoint2D32f(l, l);
     vf[1] = cvPoint2D32f(r, l);
     vf[2] = cvPoint2D32f(r, r);
@@ -776,7 +804,7 @@ void updateHUD(IplImage *out) {
 
     if (nextMousePoint!=4)
         cvPrintf(out, cvPoint(2, 20), CV_RGB(255,0,0), "%s: Click the %s corner", mouseOperationLabel[mouseOperation], mouseCornerLabel[nextMousePoint]);
-    if (projection) {
+    if (projection && !warpDisplay) {
         CvPoint corners[4], *rect = corners;
         int cornerCount = 4;
         for (int i=0; i<4; i++)
@@ -1040,6 +1068,9 @@ int handleKeypresses() {
             cvScale(coviM, coviM, sqrt(2.0), 0);
             cvScale(muM, muM, sqrt(2.0), 0);
         }
+    } else if ( c == 'p' ){
+        warpDisplay = !warpDisplay;
+        computeDisplayMatrix();
     }
     return 0;
 }
@@ -1174,7 +1205,9 @@ int main(int argc, char** argv) {
     IplImage *mask8 = 0, *mask = 0, *dev = 0, *grayscale = 0;
     IplImage *out = 0;
 
+    warpDisplay = 1;
     projection_init(&projection, &invProjection, projectionPoints, bounds);
+    computeDisplayMatrix();
     while(1) {
         IplImage *frame = cvQueryFrame( capture );
         if( !frame ) {
@@ -1187,7 +1220,13 @@ int main(int argc, char** argv) {
         if (!out)
             out = cvCreateImage(cvSize(img->width, img->height), 8, 3);
 
-        cvCopy(img, out, 0);
+        CvMat *M = cvCreateMat(3,3, CV_32FC1);
+        cvMatMul(displayMatrix, projection, M);
+        cvWarpPerspective(img, out, M, CV_INTER_LINEAR + CV_WARP_FILL_OUTLIERS, CV_RGB(0,0,0));
+        cvReleaseMat(&M);
+
+        if (warpDisplay)
+            cvRectangle(out, cvPoint(frameHeight,0), cvPoint(frameWidth,frameHeight), CV_RGB(0,0,0), CV_FILLED, 0, 0);
 
         if (!grayscale)
             grayscale = cvCreateImage(cvSize(img->width, img->height), 8, 1);

@@ -34,12 +34,13 @@ const char *TRK_HOUGH_VOTES = "Minimum Hough votes";
 
 enum {
     PICK_PROJECTION_CORNERS,
-    PICK_SAMPLE_CORNERS
+    PICK_SAMPLE_CORNERS,
+    PICK_EXCLUDE_CORNERS
 } mouseOperation = PICK_PROJECTION_CORNERS;
 int nextMousePoint = 4;
 
 const char *mouseCornerLabel[] = {"TOP LEFT", "TOP RIGHT", "BOTTOM RIGHT", "BOTTOM LEFT"};
-const char *mouseOperationLabel[] = {"Init Projection", "Sample Colors"};
+const char *mouseOperationLabel[] = {"Init Projection", "Sample Colors", "Exclude Quad"};
 
 int threshold = 100;
 int randomGoalSeed = 1337;
@@ -83,6 +84,8 @@ int warpDisplay = 0;
 
 CvPoint2D32f projectionPoints[4];
 CvPoint2D32f sampleCorners[4];
+int nextExclude = 0;
+CvPoint2D32f excludeCorners[10][4];
 int sampleColors = 0;
 
 void computeDisplayMatrix() {
@@ -109,6 +112,8 @@ void mouseHandler(int event, int x, int y, int flags, void *param) {
             arr = projectionPoints;
         else if (mouseOperation == PICK_SAMPLE_CORNERS)
             arr = sampleCorners;
+        else if (mouseOperation == PICK_EXCLUDE_CORNERS)
+            arr = excludeCorners[nextExclude];
         arr[nextMousePoint++] = point;
         if (nextMousePoint == 4) {
             switch (mouseOperation) {
@@ -121,6 +126,9 @@ void mouseHandler(int event, int x, int y, int flags, void *param) {
                     break;
                 case PICK_SAMPLE_CORNERS:
                     sampleColors = 1;
+                    break;
+                case PICK_EXCLUDE_CORNERS:
+                    nextExclude++;
                     break;
             }
         }
@@ -1071,6 +1079,10 @@ int handleKeypresses() {
     } else if ( c == 'p' ){
         warpDisplay = !warpDisplay;
         computeDisplayMatrix();
+    } else if ( c == 'e' ){
+        // exclude
+        mouseOperation = PICK_EXCLUDE_CORNERS;
+        nextMousePoint = 0;
     }
     return 0;
 }
@@ -1234,6 +1246,16 @@ int main(int argc, char** argv) {
         CvSeq *squares = findCandidateSquares(grayscale);
         objects[0].id = 0xAA;
         processSquares(img, out, grayscale, squares);
+
+        for (int i=0; i<nextExclude; i++) {
+            CvPoint pt[4], *p = pt;
+            int count = 4;
+            for (int j=0; j<4; j++)
+                pt[j] = cvPoint(excludeCorners[i][j].x,excludeCorners[i][j].y);
+            cvFillPoly(grayscale, &p, &count, 1, CV_RGB(0,0,0), 8, 0);
+            if (!warpDisplay)
+                cvPolyLine(out, &p, &count, 1, 1, CV_RGB(255,0,0), 2, CV_AA, 0);
+        }
 
         processBalls(img, grayscale, out);
 

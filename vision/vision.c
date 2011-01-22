@@ -307,14 +307,7 @@ void processBalls(IplImage *img, IplImage *gray, IplImage *out){
 
                         curObject++;
 
-                        char buf[256];
-                        sprintf(buf, "%d", curObject);
-                        CvSize textSize;
-                        int baseline;
-                        cvGetTextSize(buf, &font, &textSize, &baseline);
-
                         cvCircle(out, cvPoint(x, y), 10, CV_RGB(0,255,255),2, CV_AA,0);
-                        cvPutText(out, buf, cvPoint(x-textSize.width/2.0, y+textSize.height+10+5), &font, CV_RGB(0,255,255));
                     } else {
                         // printf("Too many objects found!");
                         cvCircle(out, cvPoint(boundRect.x+boundRect.width/2, boundRect.y+boundRect.height/2), 10, CV_RGB(255,0,0), 4, CV_AA,0);
@@ -340,8 +333,13 @@ void processBalls(IplImage *img, IplImage *gray, IplImage *out){
             continue;
         }
         CvPoint2D32f p = project(invProjection, cvPoint2D32f(objects[i].x,objects[i].y));
-    
-        //cvPrintf(out, cvPoint(p.x,p.y+10), CV_RGB(255,0,0), "%i", i);
+
+        char buf[256];
+        sprintf(buf, "%d", i);
+        CvSize textSize;
+        int baseline;
+        cvGetTextSize(buf, &font, &textSize, &baseline);
+        cvPutText(out, buf, cvPoint(p.x-textSize.width/2.0, p.y+textSize.height+10+5), &font, CV_RGB(0,255,255));
     }
 
 }

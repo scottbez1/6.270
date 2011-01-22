@@ -162,7 +162,7 @@ int compareDists(const void *a, const void *b){
 void matchObjects(board_coord previousObjects[NUM_OBJECTS], board_coord currentObjects[NUM_OBJECTS]){
 
     obj_dist distances[(NUM_OBJECTS-2)*(NUM_OBJECTS-2)];
-    
+
     int i = 0;
     for (int prevIdx = 2; prevIdx < NUM_OBJECTS; prevIdx++) { //don't match index 0 or 1 - these are always robots
         for (int curIdx = 2; curIdx < NUM_OBJECTS; curIdx++){
@@ -292,7 +292,6 @@ void processBalls(IplImage *img, IplImage *gray, IplImage *out){
                         cvSet2D(tempBGR, 0,0, cvGet2D(img,y,x));
                         cvCvtColor(tempBGR, tempHSV, CV_BGR2HSV);
                         CvScalar pixelHSV = cvGet2D(tempHSV,0,0);
-//                        printf("%.2f, %.2f\n", pixelHSV.val[0], pixelHSV.val[1]);
 
                         cvReleaseImage(&tempBGR);
                         cvReleaseImage(&tempHSV);
@@ -312,7 +311,6 @@ void processBalls(IplImage *img, IplImage *gray, IplImage *out){
                         // printf("Too many objects found!");
                         cvCircle(out, cvPoint(boundRect.x+boundRect.width/2, boundRect.y+boundRect.height/2), 10, CV_RGB(255,0,0), 4, CV_AA,0);
                     }
-
                 }
             }
         }
@@ -835,6 +833,7 @@ typedef struct {
     float x, y, r;
 } circle_t;
 
+/*
 void processCircles( IplImage *img, IplImage *out, CvSeq *circles ) {
     CvSeqReader reader;
 
@@ -848,12 +847,12 @@ void processCircles( IplImage *img, IplImage *out, CvSeq *circles ) {
         cvCircle(out, cvPoint(circle->x*8, circle->y*8), circle->r*8, CV_RGB(255,255,0), 2, 8, 3);
         printf("Circle %.0f, %.0f, %.0f\n", circle->x, circle->y, circle->r);
     }
-}
+}*/
 
 void *runSerial(void *params){
     packet_buffer position;
     while(1) {
-        
+
         position.type = POSITION;
         position.board = 0;
         for (int i = 0; i<8; i++){
@@ -863,8 +862,8 @@ void *runSerial(void *params){
 
             //copy data from objects array into payload
             memcpy(&position.payload, &objects[4*i], sizeof(board_coord)*4);
-            
-            /* 
+
+            /*
             for (int j = 0; j<4; j++){
                 printf("id:%i; x:%i; y:%i; radius: %i\n",
                         position.payload.coords[j].id,
@@ -874,15 +873,15 @@ void *runSerial(void *params){
 
             }
             */
-            
-            
+
+
             //TODO send data, memcpy
             pthread_mutex_unlock(&serial_lock);
 
             serial_send_packet(&position);
         }
-        
-        
+
+
         if (sendStartPacket){
             packet_buffer startPacket;
             startPacket.type = START;
@@ -1193,10 +1192,9 @@ int main(int argc, char** argv) {
         if (!grayscale)
             grayscale = cvCreateImage(cvSize(img->width, img->height), 8, 1);
         cvCvtColor(img, grayscale, CV_BGR2GRAY);
-        CvSeq *squares = findCandidateSquares(grayscale); 
+        CvSeq *squares = findCandidateSquares(grayscale);
         objects[0].id = 0xAA;
         processSquares(img, out, grayscale, squares);
-
 
         processBalls(img, grayscale, out);
 

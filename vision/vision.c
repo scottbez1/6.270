@@ -104,6 +104,11 @@ void computeDisplayMatrix() {
         displayMatrix = cvCloneMat(invProjection);
 }
 
+void saveExclusions() {
+    CvMat matrix = cvMat(10,4,CV_32FC2,excludeCorners);
+    cvSave( "Exclusions.xml", &matrix, 0, 0, cvAttrList(0, 0) );
+}
+
 void mouseHandler(int event, int x, int y, int flags, void *param) {
     CvPoint2D32f point = cvPoint2D32f(x,y);
     if (event == CV_EVENT_LBUTTONDOWN && nextMousePoint < 4) {
@@ -129,6 +134,7 @@ void mouseHandler(int event, int x, int y, int flags, void *param) {
                     break;
                 case PICK_EXCLUDE_CORNERS:
                     nextExclude++;
+                    saveExclusions();
                     break;
             }
         }
@@ -1083,6 +1089,12 @@ int handleKeypresses() {
         // exclude
         mouseOperation = PICK_EXCLUDE_CORNERS;
         nextMousePoint = 0;
+    } else if ( c == 'E' ){
+        nextExclude = 0;
+        for (int i=0; i<10; i++)
+            for (int j=0; j<4; j++)
+                excludeCorners[i][j] = cvPoint2D32f(0,0);
+        saveExclusions();
     }
     return 0;
 }
@@ -1186,11 +1198,32 @@ int main(int argc, char** argv) {
     projectionPoints[1] = cvPoint2D32f(frameWidth, 0);
     projectionPoints[2] = cvPoint2D32f(frameWidth, frameHeight);
     projectionPoints[3] = cvPoint2D32f(0, frameHeight);
+
+	CvMat *excludePts = (CvMat*)cvLoad( "Exclusions.xml", 0, 0, 0);
 	CvMat *projPts = (CvMat*)cvLoad( "Projection.xml", 0, 0, 0);
 	CvMat *params = (CvMat*)cvLoad( "Params.xml", 0, 0, 0);
     if (projPts) {
         for (int i=0; i<4; i++)
             projectionPoints[i] = CV_MAT_ELEM(*projPts, CvPoint2D32f, i, 0);
+    }
+    if (excludePts) {
+        for (int i=0; i<10; i++) {
+            int allZeros = 1;
+            for (int j=0; j<4; j++) {
+                excludeCorners[i][j] = CV_MAT_ELEM(*excludePts, CvPoint2D32f, i, j);
+                if (excludeCorners[i][j].x != 0 || excludeCorners[i][j].y != 0)
+                    allZeros = 0;
+            }
+            if (allZeros) {
+                nextExclude = i;
+                break;
+            }
+        }
+    } else {
+        nextExclude = 0;
+        for (int i=0; i<10; i++)
+            for (int j=0; j<4; j++)
+                excludeCorners[i][j] = cvPoint2D32f(0,0);
     }
     if (params && params->rows == 9 && params->rows == 1) {
         ball_threshold = CV_MAT_ELEM(*params, int, 0, 0);

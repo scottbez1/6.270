@@ -75,8 +75,8 @@ CvPoint pickNewGoal() {
     return newGoal;
 }
 
-CvMat *projection;
-CvMat *invProjection;
+CvMat *projection = 0; // maps from frame coords to physical coords
+CvMat *invProjection = 0; // maps from physical coords to frame coords
 
 CvPoint2D32f projectionPoints[4];
 CvPoint2D32f sampleCorners[4];
@@ -200,7 +200,7 @@ void matchObjects(board_coord previousObjects[NUM_OBJECTS], board_coord currentO
         if (!curObjectPlaced[distances[j].curIdx] &&
             !prevObjectUsed[distances[j].prevIdx]){
 
-            printf("placing curobject %i into objects[%i]; dist=%.2f\n", distances[j].curIdx, distances[j].prevIdx, distances[j].distance);
+            //printf("placing curobject %i into objects[%i]; dist=%.2f\n", distances[j].curIdx, distances[j].prevIdx, distances[j].distance);
             //place curObject into prevObjects array
             previousObjects[distances[j].prevIdx] = currentObjects[distances[j].curIdx];
 
@@ -282,7 +282,10 @@ void processBalls(IplImage *img, IplImage *gray, IplImage *out){
                 goodPoints += get_5pixel_avg(gray,(x1*3+x2*1)/4,(y1 + y2)/2) > 0.9;
 
                 if (goodPoints >= 8){
-                if (curObject < NUM_OBJECTS){
+                    CvPoint2D32f display_pt = project(invProjection, center);
+                    CvScalar color = CV_RGB(0,255,255);
+                    int thickness = 2;
+                    if (curObject < NUM_OBJECTS){
                         float x = boundRect.x + boundRect.width/2;
                         float y = boundRect.y + boundRect.height/2;
 
@@ -302,15 +305,12 @@ void processBalls(IplImage *img, IplImage *gray, IplImage *out){
                         tempObjects[curObject].radius = clamp(((float)boundRect.width-min_ball_dim)/(max_ball_dim-min_ball_dim)*16.0, 0, 15);
                         tempObjects[curObject].hue = (int)(pixelHSV.val[0] * 16.0 / 180.0 + 0.5) % 16;
                         tempObjects[curObject].saturation = pixelHSV.val[1] * 16.0 / 256.0;
-                        //printf("%i, %i\n", objects[curObject].a, objects[curObject].b);
-
                         curObject++;
-
-                        cvCircle(out, cvPoint(x, y), 10, CV_RGB(0,255,255),2, CV_AA,0);
                     } else {
-                        // printf("Too many objects found!");
-                        cvCircle(out, cvPoint(boundRect.x+boundRect.width/2, boundRect.y+boundRect.height/2), 10, CV_RGB(255,0,0), 4, CV_AA,0);
+                        color = CV_RGB(255,0,0);
+                        thickness = 4;
                     }
+                    cvCircle(out, cvPoint(display_pt.x, display_pt.y), 10, color, thickness, CV_AA,0);
                 }
             }
         }
@@ -517,7 +517,7 @@ void drawSquare(IplImage *out, IplImage *gray, CvPoint pt[4], CvPoint2D32f bit_p
     // draw the square as a closed polyline
     CvPoint v[20];
     CvPoint2D32f vf[20];
-    CvMat m = cvMat(1, 20, CV_32FC2, vf);
+    CvMat m;
     CvPoint *p[10];
     int count[10];
 
@@ -536,6 +536,7 @@ void drawSquare(IplImage *out, IplImage *gray, CvPoint pt[4], CvPoint2D32f bit_p
     vf[1] = cvPoint2D32f(r, l);
     vf[2] = cvPoint2D32f(r, r);
     vf[3] = cvPoint2D32f(l, r);
+    m = cvMat(1, 4, CV_32FC2, vf);
     cvPerspectiveTransform(&m, &m, H);
 
     for (int i=0; i<4; i++)
@@ -555,6 +556,7 @@ void drawSquare(IplImage *out, IplImage *gray, CvPoint pt[4], CvPoint2D32f bit_p
         p[i+5] = &v[2*i+10];
         count[i+5] = 2;
     }
+    m = cvMat(1, 20, CV_32FC2, vf);
     cvPerspectiveTransform(&m, &m, H);
     for (int i=0; i<20; i++)
         v[i] = cvPoint(vf[i].x*8, vf[i].y*8);
@@ -789,11 +791,6 @@ void updateHUD(IplImage *out) {
     else if (matchState == MATCH_RUNNING) {
         float s = MATCH_LEN_SECONDS - (now - matchStartTime);
         cvPrintf(out, textPoint, textColor, "Remaining time: %02d:%6.3f seconds.  %.1f FPS", ((int)s)/60, fmod(s,60), fps);
-
-        //draw circle at goal
-        CvPoint2D32f goalPt = cvPoint2D32f(goal.x, goal.y);
-        goalPt = project(invProjection, goalPt);
-        //cvCircle(out, cvPoint(goalPt.x*8, goalPt.y*8), 6*8, CV_RGB(0,0,255),-1,CV_AA,3);
     }
 }
 
@@ -825,8 +822,6 @@ void processSquares( IplImage *img, IplImage *out, IplImage *grayscale, CvSeq *s
 
         drawSquare(out, grayscale, pt, bit_pt_true, id, orientationHandle, theta);
     }
-
-    updateHUD(out);
 }
 
 typedef struct {
@@ -1177,6 +1172,7 @@ int main(int argc, char** argv) {
     printf("To initialize coordinate projection, press <i>\n");
 
     IplImage *mask8 = 0, *mask = 0, *dev = 0, *grayscale = 0;
+    IplImage *out = 0;
 
     projection_init(&projection, &invProjection, projectionPoints, bounds);
     while(1) {
@@ -1187,7 +1183,11 @@ int main(int argc, char** argv) {
         }
 
         IplImage *img = cvCloneImage(frame); // can't modify original
-        IplImage *out = cvCloneImage( img );
+
+        if (!out)
+            out = cvCreateImage(cvSize(img->width, img->height), 8, 3);
+
+        cvCopy(img, out, 0);
 
         if (!grayscale)
             grayscale = cvCreateImage(cvSize(img->width, img->height), 8, 1);
@@ -1217,17 +1217,21 @@ int main(int argc, char** argv) {
         processCircles(img, out, circles);
 */
 
+        updateHUD(out);
+
         if (handleKeypresses())
             break;
         updateGame();
 
         // show the resultant image
         cvShowImage( WND_MAIN, out );
-        cvReleaseImage( &out );
 
         cvReleaseImage(&img);
         cvClearMemStorage(storage); // clear memory storage - reset free space position
     }
+
+    if (out)
+        cvReleaseImage( &out );
 
     if (mask8) {
         cvReleaseImage(&dev);

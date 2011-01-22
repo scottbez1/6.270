@@ -132,9 +132,9 @@ IplImage *filter_image( IplImage *img ) {
 
 
 
-int getObjectDistance(board_coord a, board_coord b){
+double getObjectDistance(board_coord a, board_coord b){
     if (a.id != 0xFF || b.id != 0xFF){
-        return INT_MAX;
+        return INFINITY;
     }
     return dist_sq(cvPoint(a.x,a.y), cvPoint(b.x,b.y));
 }
@@ -142,7 +142,7 @@ int getObjectDistance(board_coord a, board_coord b){
 typedef struct {
     int prevIdx;
     int curIdx;
-    int distance;
+    double distance;
 } obj_dist;
 
 int compareDists(const void *a, const void *b){
@@ -153,7 +153,7 @@ int compareDists(const void *a, const void *b){
         return -1;
     else if (A->distance == B->distance)
         return 0;
-    else if (A->distance > B->distance)
+    else 
         return 1;
 }
 
@@ -166,11 +166,10 @@ void matchObjects(board_coord previousObjects[NUM_OBJECTS], board_coord currentO
     int i = 0;
     for (int prevIdx = 2; prevIdx < NUM_OBJECTS; prevIdx++) { //don't match index 0 or 1 - these are always robots
         for (int curIdx = 2; curIdx < NUM_OBJECTS; curIdx++){
-            int dist = getObjectDistance(previousObjects[prevIdx], currentObjects[curIdx]);
            obj_dist d;
            d.prevIdx = prevIdx;
            d.curIdx = curIdx;
-           d.distance = dist;
+           d.distance = getObjectDistance(previousObjects[prevIdx], currentObjects[curIdx]);
            distances[i] = d;
            i++;
         }
@@ -201,7 +200,7 @@ void matchObjects(board_coord previousObjects[NUM_OBJECTS], board_coord currentO
         if (!curObjectPlaced[distances[j].curIdx] &&
             !prevObjectUsed[distances[j].prevIdx]){
 
-            //printf("placing curobject %i into objects[%i]\n", distances[j].curIdx, distances[j].prevIdx);
+            printf("placing curobject %i into objects[%i]; dist=%.2f\n", distances[j].curIdx, distances[j].prevIdx, distances[j].distance);
             //place curObject into prevObjects array
             previousObjects[distances[j].prevIdx] = currentObjects[distances[j].curIdx];
 

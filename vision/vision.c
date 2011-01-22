@@ -6,7 +6,6 @@
 double matchStartTime;
 int matchState = MATCH_ENDED;
 int sendStartPacket = 0;   //flag to have a start packet sent ASAP
-int score = 0;
 CvPoint goal;
 
 #define NUM_OBJECTS 32
@@ -57,6 +56,8 @@ int ball_threshold = 90;
 CvFont font, boldFont;
 CvMemStorage *storage;
 CvCapture *capture;
+float frameWidth;
+float frameHeight;
 
 int cvPrintf(IplImage *img, CvPoint pt, CvScalar color, const char *format, ...);
 
@@ -72,15 +73,6 @@ CvPoint pickNewGoal() {
         newGoal = cvPoint(x,y);
     } while (dist_sq(newGoal, goal) < min_sep*min_sep);
     return newGoal;
-}
-
-void checkGoals() {
-    CvPoint robotPt = cvPoint(objects[0].x, objects[0].y);
-    if (sqrt(dist_sq(goal, robotPt)) <= GOAL_TOLERANCE) {
-        score++;
-        goal = pickNewGoal();
-        printf("GOAL!\n");
-    }
 }
 
 CvMat *projection;
@@ -292,8 +284,8 @@ void processBalls(IplImage *img, IplImage *gray, IplImage *out){
 
                 if (goodPoints >= 8){
                 if (curObject < NUM_OBJECTS){
-                        int x = boundRect.x + boundRect.width/2;
-                        int y = boundRect.y + boundRect.height/2;
+                        float x = boundRect.x + boundRect.width/2;
+                        float y = boundRect.y + boundRect.height/2;
 
                         IplImage *tempBGR = cvCreateImage( cvSize(1,1), 8, 3 );
                         IplImage *tempHSV = cvCreateImage( cvSize(1,1), 8, 3 );
@@ -316,9 +308,16 @@ void processBalls(IplImage *img, IplImage *gray, IplImage *out){
 
                         curObject++;
 
-                        cvCircle(out, cvPoint(boundRect.x+boundRect.width/2, boundRect.y+boundRect.height/2), 10, CV_RGB(0,255,255),2, CV_AA,0);
+                        char buf[256];
+                        sprintf(buf, "%d", curObject);
+                        CvSize textSize;
+                        int baseline;
+                        cvGetTextSize(buf, &font, &textSize, &baseline);
+
+                        cvCircle(out, cvPoint(x, y), 10, CV_RGB(0,255,255),2, CV_AA,0);
+                        cvPutText(out, buf, cvPoint(x-textSize.width/2.0, y+textSize.height+10+5), &font, CV_RGB(0,255,255));
                     } else {
-                        printf("Too many objects found!");
+                        // printf("Too many objects found!");
                         cvCircle(out, cvPoint(boundRect.x+boundRect.width/2, boundRect.y+boundRect.height/2), 10, CV_RGB(255,0,0), 4, CV_AA,0);
                     }
 
@@ -501,12 +500,17 @@ void drawCallout(IplImage *out, float cx, float cy, float radius, int id) {
     int baseline;
     cvGetTextSize(buf, &font, &textSize, &baseline);
 
-    cvPrintf(out, cvPoint(cx-textSize.width/2.0, cy+radius+25-baseline), CV_RGB(0,255,255), "Team %i", id);
+    float y = cy+radius+15+textSize.height;
 
-    v[0] = cvPoint(8*(cx-radius), 8*(cy));
-    v[1] = cvPoint(8*(cx-(radius+15)), 8*(cy));
-    v[2] = cvPoint(8*(cx-(radius+15)), 8*(cy+radius+25));
-    v[3] = cvPoint(8*(cx+textSize.width/2), 8*(cy+radius+25));
+    if (y > frameHeight-10)
+        y = cy-radius-15;
+
+    cvPrintf(out, cvPoint(cx-textSize.width/2.0, y-baseline), CV_RGB(0,255,255), "Team %i", id);
+
+    v[0] = cvPoint(8*(cx-radius), 8*cy);
+    v[1] = cvPoint(8*(cx-(radius+15)), 8*cy);
+    v[2] = cvPoint(8*(cx-(radius+15)), 8*y);
+    v[3] = cvPoint(8*(cx+textSize.width/2), 8*y);
 
     p[0] = &v[0];
     count[0] = 4;
@@ -783,8 +787,6 @@ void updateHUD(IplImage *out) {
         cvPolyLine(out, &rect, &cornerCount, 1, 1, CV_RGB(0,255,255), 2, CV_AA, 3);
     }
 
-    cvPrintf(out, cvPoint(5, out->height-40), CV_RGB(0,255,255), "Score: %i", score);
-
     CvPoint textPoint = cvPoint(5, out->height-20);
     CvScalar textColor = CV_RGB(0,255,255);
     if (matchState == MATCH_ENDED)
@@ -937,7 +939,7 @@ void preserveValues(int id) {
 
 int initUI() {
     cvInitFont(&font, CV_FONT_HERSHEY_SIMPLEX, 0.5, 0.5, 0, 0, CV_AA);
-    cvInitFont(&boldFont, CV_FONT_HERSHEY_SIMPLEX, 0.5, 0.5, 0, 2, CV_AA);
+    cvInitFont(&boldFont, CV_FONT_HERSHEY_SIMPLEX, 1.0, 1.0, 0, 2, CV_AA);
     cvNamedWindow( WND_MAIN, 1 );
     cvNamedWindow( WND_CONTROLS, 1);
     cvResizeWindow( WND_CONTROLS, 200, 400);
@@ -964,8 +966,6 @@ void cleanupUI() {
     cvDestroyWindow( WND_MAIN);
 }
 
-float frameWidth;
-float frameHeight;
 int initCV(char *source) {
     // create memory storage for contours
     storage = cvCreateMemStorage(0);
@@ -1036,7 +1036,6 @@ int handleKeypresses() {
         srand(randomGoalSeed); // reseed random
         goal = cvPoint(X_MIN, Y_MIN); // don't let pickNewGoal choose a point near the start
         goal = pickNewGoal();
-        score = 0;
     } else if ( c == 's' ) {
         mouseOperation = PICK_SAMPLE_CORNERS;
         nextMousePoint = 0;
@@ -1058,8 +1057,9 @@ void updateGame() {
     double now = timeNow();
     if ((now - matchStartTime) >= MATCH_LEN_SECONDS)
         matchState = MATCH_ENDED;
-    else
-        checkGoals();
+    else {
+        //checkGoals();
+    }
 }
 
 // compute hermitian square root H of inverse of symmetric matrix M with real positive eigenvalues

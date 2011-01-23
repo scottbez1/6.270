@@ -12,6 +12,7 @@ int sendStopPacket = 0;
 board_coord objects[NUM_OBJECTS];
 
 pthread_mutex_t serial_lock;
+int sightings[33];
 
 float bounds[4] = {X_MIN, X_MAX, Y_MIN, Y_MAX};
 
@@ -376,7 +377,7 @@ CvSeq *findCandidateSquares(IplImage *tgray) {
     CvSeq *squares = cvCreateSeq( 0, sizeof(CvSeq), sizeof(CvPoint), storage );
 
     cvThreshold( tgray, gray, threshold, 255, CV_THRESH_BINARY );
-    
+
 
     // find contours and store them all as a list
     cvFindContours( gray, storage, &contours, sizeof(CvContour),
@@ -384,7 +385,7 @@ CvSeq *findCandidateSquares(IplImage *tgray) {
 
     // test each contour
     while( contours ) {
-        
+
         // approximate contour with accuracy proportional
         // to the contour perimeter
         result = cvApproxPoly( contours, sizeof(CvContour), storage,
@@ -429,13 +430,13 @@ CvSeq *findCandidateSquares(IplImage *tgray) {
                         fabs(side_len[0] - side_len[2])/side_len[0] <= tolerance &&
                         fabs(side_len[0] - side_len[3])/side_len[0] <= tolerance) {
                     // then write quandrange vertices to resultant sequence in clockwise order
-        
+
                     for( i = 0; i < 4; i++ )
                         cvSeqPush( squares, &pt[i] );
                 }
             }
         }
-        
+
 
         // take the next contour
         contours = contours->h_next;
@@ -771,6 +772,7 @@ void processRobotDetection(CvPoint2D32f trueCenter, float theta, int id, CvPoint
     *orientationHandle = cvPoint2D32f(trueCenter.x + FOOT*cos(theta), trueCenter.y + FOOT*sin(theta));
     *orientationHandle = project(invProjection, *orientationHandle);
 
+    sightings[id]+=2;
     int i;
     if (objects[0].id == id || objects[0].id == 0xAA)
         i=0;
@@ -1246,6 +1248,10 @@ int main(int argc, char** argv) {
     warpDisplay = 1;
     projection_init(&projection, &invProjection, projectionPoints, bounds);
     computeDisplayMatrix();
+
+    for (int i=0; i<33; i++)
+        sightings[i] = 0;
+
     while(1) {
         IplImage *frame = cvQueryFrame( capture );
         if( !frame ) {
@@ -1272,6 +1278,9 @@ int main(int argc, char** argv) {
         CvSeq *squares = findCandidateSquares(grayscale);
         objects[0].id = 0xAA;
         processSquares(img, out, grayscale, squares);
+
+        for (int i=0; i<33; i++)
+            sightings[i] = MIN(MAX(sightings[i]-1, 0), 60);
 
         for (int i=0; i<nextExclude; i++) {
             CvPoint pt[4], *p = pt;

@@ -491,7 +491,7 @@ void estimateReticleParams(CvMat *H, float *cx, float *cy, float *radius, float 
 
     vf[0] = cvPoint2D32f(0.0, 0.0);
     vf[1] = cvPoint2D32f(cos(*theta), sin(*theta));
-    cvPerspectiveTransform(&m, &m, invProjection);
+    cvPerspectiveTransform(&m, &m, displayMatrix);
     *theta = -atan2(vf[1].y-vf[0].y, vf[1].x-vf[0].x);
 }
 
@@ -604,7 +604,7 @@ void drawSquare(IplImage *out, IplImage *gray, CvPoint pt[4], CvPoint2D32f bit_p
         v[i] = cvPoint(vf[i].x*8, vf[i].y*8);
     cvPolyLine(out, p, count, 10, 0, CV_RGB(0,255,255), 1, CV_AA, 3);
 
-    float cx, cy, radius, thetaCorrection;
+    float cx, cy, radius;
     estimateReticleParams(H, &cx, &cy, &radius, &theta);
 
     float t = 2.0;

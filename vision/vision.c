@@ -883,37 +883,22 @@ void sendStartStopCommand(int command, int id_a, int id_b) {
     printf("%s!\n", command == START ? "start" : "stop");
 }
 
+void sendPositions(board_coord objects[NUM_OBJECTS]) {
+    packet_buffer pos;
+    for (int i = 0; i<8; i++){
+        pos.type = POSITION;
+        pos.board = 0;
+        pos.seq_no = i;
+        memcpy(&pos.payload, &objects[4*i], sizeof(board_coord)*4);
+        serial_send_packet(&pos);
+    }
+}
+
 void *runSerial(void *params){
-    packet_buffer position;
     while(1) {
-
-        position.type = POSITION;
-        position.board = 0;
-        for (int i = 0; i<8; i++){
-            //printf("========%i=======\n", i);
-            pthread_mutex_lock( &serial_lock );
-            position.seq_no = i;
-
-            //copy data from objects array into payload
-            memcpy(&position.payload, &objects[4*i], sizeof(board_coord)*4);
-
-            /*
-            for (int j = 0; j<4; j++){
-                printf("id:%i; x:%i; y:%i; radius: %i\n",
-                        position.payload.coords[j].id,
-                        position.payload.coords[j].x,
-                        position.payload.coords[j].y,
-                        position.payload.coords[j].radius);
-
-            }
-            */
-
-
-            //TODO send data, memcpy
-            pthread_mutex_unlock(&serial_lock);
-
-            serial_send_packet(&position);
-        }
+        pthread_mutex_lock( &serial_lock );
+        sendPositions(objects);
+        pthread_mutex_unlock(&serial_lock);
 
 
         if (sendStartPacket){

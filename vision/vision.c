@@ -7,7 +7,6 @@ double matchStartTime;
 int matchState = MATCH_ENDED;
 int sendStartPacket = 0;   //flag to have a start packet sent ASAP
 int sendStopPacket = 0;
-CvPoint goal;
 
 #define NUM_OBJECTS 32
 board_coord objects[NUM_OBJECTS];
@@ -29,7 +28,6 @@ const char *TRK_MIN_BALL_DIM = "Min ball dimension";
 const char *TRK_MAX_BALL_DIM = "Max ball dimension";
 const char *TRK_BALL_THRESHOLD = "Ball brightness threshold";
 
-const char *TRK_RAND_GOAL_SEED = "Random goal seed";
 const char *TRK_CANNY_THRESHOLD = "Canny upper threshold";
 const char *TRK_HOUGH_VOTES = "Minimum Hough votes";
 
@@ -62,20 +60,6 @@ float frameWidth;
 float frameHeight;
 
 int cvPrintf(IplImage *img, CvPoint pt, CvScalar color, const char *format, ...);
-
-
-CvPoint pickNewGoal() {
-    const int inset = 600;
-    const int min_sep = 768; //require goals to be at least 18in. (768 ticks) apart
-    CvPoint newGoal;
-
-    do {
-        int x = boundedRandom(X_MIN+inset, X_MAX-inset);
-        int y = boundedRandom(Y_MIN+inset,     0-inset);
-        newGoal = cvPoint(x,y);
-    } while (dist_sq(newGoal, goal) < min_sep*min_sep);
-    return newGoal;
-}
 
 CvMat *projection = 0; // maps from frame coords to physical coords
 CvMat *displayMatrix = 0; // maps from physical coords to display coords
@@ -994,7 +978,6 @@ int initUI() {
     cvCreateTrackbar( TRK_TOLERANCE, WND_CONTROLS, &side_tolerance, 300, &preserveValues);
     cvCreateTrackbar( TRK_MIN_AREA, WND_CONTROLS, &min_area, 10000, &preserveValues);
     cvCreateTrackbar( TRK_MAX_AREA, WND_CONTROLS, &max_area, 10000, &preserveValues);
-    cvCreateTrackbar( TRK_RAND_GOAL_SEED, WND_CONTROLS, &randomGoalSeed, 5000, &preserveValues);
     cvCreateTrackbar( TRK_CANNY_THRESHOLD, WND_CONTROLS, &canny_threshold, 255, &preserveValues);
     cvCreateTrackbar( TRK_HOUGH_VOTES, WND_CONTROLS, &hough_votes, 100, &preserveValues);
     cvCreateTrackbar( TRK_MIN_BALL_DIM, WND_CONTROLS, &min_ball_dim, 50, &preserveValues);
@@ -1078,8 +1061,6 @@ int handleKeypresses() {
         matchState = MATCH_RUNNING;
         sendStartPacket = 1; //set flag for start packet to be sent
         srand(randomGoalSeed); // reseed random
-        goal = cvPoint(X_MIN, Y_MIN); // don't let pickNewGoal choose a point near the start
-        goal = pickNewGoal();
     } else if ( c == 's' ) {
         mouseOperation = PICK_SAMPLE_CORNERS;
         nextMousePoint = 0;

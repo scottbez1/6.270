@@ -1043,7 +1043,9 @@ int handleKeypresses() {
     } else if ( c == 'r' ) {
         matchStartTime = timeNow(); //set the match start time
         matchState = MATCH_RUNNING;
+        pthread_mutex_lock(&serial_lock);
         sendStartPacket = 1; //set flag for start packet to be sent
+        pthread_mutex_unlock(&serial_lock);
         srand(randomGoalSeed); // reseed random
     } else if ( c == 's' ) {
         mouseOperation = PICK_SAMPLE_CORNERS;
@@ -1079,7 +1081,9 @@ void updateGame() {
     double now = timeNow();
     if ((now - matchStartTime) >= MATCH_LEN_SECONDS && matchState != MATCH_ENDED) {
         matchState = MATCH_ENDED;
+        pthread_mutex_lock(&serial_lock);
         sendStopPacket = 1;
+        pthread_mutex_unlock(&serial_lock);
     } else {
         //checkGoals();
     }

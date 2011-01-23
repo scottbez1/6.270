@@ -17,6 +17,6 @@
 
 #define GOAL_TOLERANCE (FOOT/6.)
 
-#define MAX_ROBOT_ID 12288
+#define MAX_ROBOT_ID 32
 
 #endif

@@ -6,6 +6,7 @@
 double matchStartTime;
 int matchState = MATCH_ENDED;
 int sendStartPacket = 0;   //flag to have a start packet sent ASAP
+int sendStopPacket = 0;
 CvPoint goal;
 
 #define NUM_OBJECTS 32
@@ -929,6 +930,16 @@ void *runSerial(void *params){
             printf("start!\n");
             sendStartPacket = 0;
         }
+        if (sendStopPacket){
+            packet_buffer stopPacket;
+            stopPacket.type = STOP;
+            stopPacket.payload.array[0] = objects[0].id;
+            stopPacket.payload.array[1] = objects[1].id;
+
+            serial_send_packet(&stopPacket);
+            printf("stop!\n");
+            sendStopPacket = 0;
+        }
     }
 }
 
@@ -1101,9 +1112,10 @@ int handleKeypresses() {
 
 void updateGame() {
     double now = timeNow();
-    if ((now - matchStartTime) >= MATCH_LEN_SECONDS)
+    if ((now - matchStartTime) >= MATCH_LEN_SECONDS) {
         matchState = MATCH_ENDED;
-    else {
+        sendStopPacket = 1;
+    } else {
         //checkGoals();
     }
 }

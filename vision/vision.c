@@ -13,7 +13,8 @@ volatile int sendPositionPacket = 0;
 board_coord objects[NUM_OBJECTS];
 board_coord serialObjects[NUM_OBJECTS];
 
-pthread_mutex_t serial_lock;
+pthread_mutex_t serial_lock = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t serial_condition = PTHREAD_COND_INITIALIZER;
 int sightings[MAX_ROBOT_ID+1];
 board_coord robots[MAX_ROBOT_ID+1];
 
@@ -892,6 +893,7 @@ void *runSerial(void *params){
         int sendPos, sendStart, sendStop;
         board_coord localObjects[NUM_OBJECTS];
         pthread_mutex_lock( &serial_lock );
+        pthread_cond_wait( &serial_condition, &serial_lock );
         sendPos = sendPositionPacket;
         sendPositionPacket = 0;
         sendStart = sendStartPacket;
@@ -917,9 +919,6 @@ int initSerial(const char *device) {
     if (!serial_open(device))
         fprintf(stderr, "Could not open serial port!\n");
     serial_sync();
-
-    //initialize mutexes
-    pthread_mutex_init(&serial_lock, NULL);
 
     //start the serial comm thread
     pthread_t serialThread;
@@ -1321,6 +1320,7 @@ int main(int argc, char** argv) {
         pthread_mutex_lock( &serial_lock);
         memcpy(serialObjects, objects, sizeof(serialObjects));
         sendPositionPacket = 1;
+        pthread_cond_signal( &serial_condition);
         pthread_mutex_unlock( &serial_lock);
 
         // show the resultant image

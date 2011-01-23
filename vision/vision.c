@@ -1112,7 +1112,7 @@ int handleKeypresses() {
 
 void updateGame() {
     double now = timeNow();
-    if ((now - matchStartTime) >= MATCH_LEN_SECONDS) {
+    if ((now - matchStartTime) >= MATCH_LEN_SECONDS && matchState != MATCH_ENDED) {
         matchState = MATCH_ENDED;
         sendStopPacket = 1;
     } else {

@@ -873,6 +873,16 @@ void processCircles( IplImage *img, IplImage *out, CvSeq *circles ) {
     }
 }*/
 
+void sendStartStopCommand(int command, int id_a, int id_b) {
+    packet_buffer startPacket;
+    startPacket.type = command;
+    startPacket.payload.array[0] = id_a;
+    startPacket.payload.array[1] = id_b;
+
+    serial_send_packet(&startPacket);
+    printf("%s!\n", command == START ? "start" : "stop");
+}
+
 void *runSerial(void *params){
     packet_buffer position;
     while(1) {
@@ -907,23 +917,11 @@ void *runSerial(void *params){
 
 
         if (sendStartPacket){
-            packet_buffer startPacket;
-            startPacket.type = START;
-            startPacket.payload.array[0] = objects[0].id;
-            startPacket.payload.array[1] = objects[1].id;
-
-            serial_send_packet(&startPacket);
-            printf("start!\n");
+            sendStartStopCommand(START, objects[0].id, objects[1].id);
             sendStartPacket = 0;
         }
         if (sendStopPacket){
-            packet_buffer stopPacket;
-            stopPacket.type = STOP;
-            stopPacket.payload.array[0] = objects[0].id;
-            stopPacket.payload.array[1] = objects[1].id;
-
-            serial_send_packet(&stopPacket);
-            printf("stop!\n");
+            sendStartStopCommand(STOP, objects[0].id, objects[1].id);
             sendStopPacket = 0;
         }
     }

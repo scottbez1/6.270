@@ -5,14 +5,17 @@
 
 double matchStartTime;
 int matchState = MATCH_ENDED;
-int sendStartPacket = 0;   //flag to have a start packet sent ASAP
-int sendStopPacket = 0;
+volatile int sendStartPacket = 0; // flag to have a start packet sent ASAP
+volatile int sendStopPacket = 0;
+volatile int sendPositionPacket = 0;
 
 #define NUM_OBJECTS 32
 board_coord objects[NUM_OBJECTS];
+board_coord serialObjects[NUM_OBJECTS];
 
 pthread_mutex_t serial_lock;
-int sightings[33];
+int sightings[MAX_ROBOT_ID+1];
+board_coord robots[MAX_ROBOT_ID+1];
 
 float bounds[4] = {X_MIN, X_MAX, Y_MIN, Y_MAX};
 
@@ -341,10 +344,7 @@ void processBalls(IplImage *img, IplImage *gray, IplImage *out){
         tempObjects[curObject].id = 0xAA;
     }
 
-    pthread_mutex_lock( &serial_lock);
     matchObjects(objects, tempObjects);
-    pthread_mutex_unlock( &serial_lock);
-
 
     for (int i = 2; i<NUM_OBJECTS; i++) {
         if (objects[i].id != 0xFF) {
@@ -773,22 +773,15 @@ void processRobotDetection(CvPoint2D32f trueCenter, float theta, int id, CvPoint
     *orientationHandle = project(invProjection, *orientationHandle);
 
     sightings[id]+=2;
-    int i;
-    if (objects[0].id == id || objects[0].id == 0xAA)
-        i=0;
-    else
-        i=1;
 
     int x = clamp(trueCenter.x, X_MIN, X_MAX);
     int y = clamp(trueCenter.y, Y_MIN, Y_MAX);
     int t = theta / CV_PI * 2048;
     //store robot coordinates
-    pthread_mutex_lock( &serial_lock);
-    objects[i].id = id;
-    objects[i].x = x;
-    objects[i].y = y;
-    objects[i].theta = t; //change theta from +/- PI to +/-2048 (signed 12 bit int)
-    pthread_mutex_unlock( &serial_lock);
+    robots[id].id = id;
+    robots[id].x = x;
+    robots[id].y = y;
+    robots[id].theta = t; //change theta from +/- PI to +/-2048 (signed 12 bit int)
 
     if (0)
         printf("X: %04i, Y: %04i, theta: %04i, theta_act: %f, proj_x:%f, proj_y:%f \n", x, y, t, theta, orientationHandle->x, orientationHandle->y);
@@ -896,19 +889,27 @@ void sendPositions(board_coord objects[NUM_OBJECTS]) {
 
 void *runSerial(void *params){
     while(1) {
+        int sendPos, sendStart, sendStop;
+        board_coord localObjects[NUM_OBJECTS];
         pthread_mutex_lock( &serial_lock );
-        sendPositions(objects);
+        sendPos = sendPositionPacket;
+        sendPositionPacket = 0;
+        sendStart = sendStartPacket;
+        sendStartPacket = 0;
+        sendStop = sendStopPacket;
+        sendStopPacket = 0;
+        if (sendPos)
+            memcpy(localObjects, serialObjects, sizeof(localObjects));
         pthread_mutex_unlock(&serial_lock);
 
+        if (sendPos)
+            sendPositions(localObjects);
 
-        if (sendStartPacket){
-            sendStartStopCommand(START, objects[0].id, objects[1].id);
-            sendStartPacket = 0;
-        }
-        if (sendStopPacket){
-            sendStartStopCommand(STOP, objects[0].id, objects[1].id);
-            sendStopPacket = 0;
-        }
+        if (sendStart)
+            sendStartStopCommand(START, localObjects[0].id, localObjects[1].id);
+
+        if (sendStop)
+            sendStartStopCommand(STOP, localObjects[0].id, localObjects[1].id);
     }
 }
 
@@ -1028,8 +1029,6 @@ void cleanupCV() {
 }
 
 int initGame() {
-    objects[0].id=170;
-    objects[1].id=170;
     return 0;
 }
 
@@ -1232,7 +1231,7 @@ int main(int argc, char** argv) {
     projection_init(&projection, &invProjection, projectionPoints, bounds);
     computeDisplayMatrix();
 
-    for (int i=0; i<33; i++)
+    for (int i=0; i<MAX_ROBOT_ID+1; i++)
         sightings[i] = 0;
 
     while(1) {
@@ -1259,11 +1258,24 @@ int main(int argc, char** argv) {
             grayscale = cvCreateImage(cvSize(img->width, img->height), 8, 1);
         cvCvtColor(img, grayscale, CV_BGR2GRAY);
         CvSeq *squares = findCandidateSquares(grayscale);
-        objects[0].id = 0xAA;
         processSquares(img, out, grayscale, squares);
 
-        for (int i=0; i<33; i++)
+        robots[0].id = 0xAA;
+        int id_a=0, id_b=0, votes_a=0, votes_b=0;
+        for (int i=0; i<MAX_ROBOT_ID+1; i++) {
             sightings[i] = MIN(MAX(sightings[i]-1, 0), 60);
+            if (sightings[i] > votes_a) {
+                votes_b = votes_a;
+                id_b = id_a;
+                votes_a = sightings[i];
+                id_a = i;
+            } else if (sightings[i] > votes_b) {
+                votes_b = sightings[i];
+                id_b = i;
+            }
+        }
+        objects[0] = robots[id_a];
+        objects[1] = robots[id_b];
 
         for (int i=0; i<nextExclude; i++) {
             CvPoint pt[4], *p = pt;
@@ -1301,6 +1313,11 @@ int main(int argc, char** argv) {
         if (handleKeypresses())
             break;
         updateGame();
+
+        pthread_mutex_lock( &serial_lock);
+        memcpy(serialObjects, objects, sizeof(serialObjects));
+        sendPositionPacket = 1;
+        pthread_mutex_unlock( &serial_lock);
 
         // show the resultant image
         cvShowImage( WND_MAIN, out );

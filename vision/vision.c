@@ -542,15 +542,7 @@ void drawSquare(IplImage *out, IplImage *gray, CvPoint pt[4], CvPoint2D32f bit_p
     CvPoint *p[10];
     int count[10];
 
-    //black out square area in original grayscale image since it has been processed
-    p[0] = pt;
-    count[0] = 4;
-    cvFillPoly(gray, p, count, 1, CV_RGB(0,0,0), 8, 0);
-
-    if (id == -1)
-        return;
-
-    float l = -1.0, r=5.0;
+    float l = -1.0, r=5.0, w=4.0;         // w is size of circle exclusion zone
     CvMat *H = cvCreateMat(3,3,CV_32FC1); // tag coords to display coords
     CvMat *A = 0;                         // tag coords to frame coords
     CvMat *B = cvCreateMat(3,3,CV_32FC1); // frame coords to display coords
@@ -558,8 +550,28 @@ void drawSquare(IplImage *out, IplImage *gray, CvPoint pt[4], CvPoint2D32f bit_p
     getBitSamplingTransform(pt, &A);
     cvMatMul(displayMatrix, projection, B);
     cvMatMul(B, A, H);
-    cvReleaseMat(&A);
     cvReleaseMat(&B);
+
+    //black out square area in original grayscale image since it has been processed
+    vf[0] = cvPoint2D32f(l-w, l-w);
+    vf[1] = cvPoint2D32f(r+w, l-w);
+    vf[2] = cvPoint2D32f(r+w, r+w);
+    vf[3] = cvPoint2D32f(l-w, r+w);
+    m = cvMat(1, 4, CV_32FC2, vf);
+    cvPerspectiveTransform(&m, &m, A);
+
+    for (int i=0; i<4; i++)
+        v[i] = cvPoint(vf[i].x*8, vf[i].y*8);
+    p[0] = v;
+    count[0] = 4;
+    cvFillPoly(gray, p, count, 1, CV_RGB(0,0,0), 8, 3);
+
+    cvReleaseMat(&A);
+
+    if (id == -1) {
+        cvReleaseMat(&H);
+        return;
+    }
 
     vf[0] = cvPoint2D32f(l, l);
     vf[1] = cvPoint2D32f(r, l);

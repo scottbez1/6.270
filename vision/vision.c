@@ -1300,8 +1300,6 @@ int main(int argc, char** argv) {
         cvWarpPerspective(img, out, M, CV_INTER_LINEAR + CV_WARP_FILL_OUTLIERS, CV_RGB(0,0,0));
         cvReleaseMat(&M);
 
-        cvResetImageROI(out);
-
         //if (warpDisplay) {
             //cvRectangle(out, cvPoint(frameHeight,0), cvPoint(frameWidth,frameHeight), CV_RGB(0,0,0), CV_FILLED, 0, 0);
         //}

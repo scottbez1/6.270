@@ -1251,7 +1251,8 @@ int main(int argc, char** argv) {
     for (int i=0; i<MAX_ROBOT_ID+1; i++)
         sightings[i] = 0;
 
-    double last = timeNow();
+    double lastPosUpdate = timeNow();
+    double lastStartPacket = timeNow();
     while(1) {
         IplImage *frame = cvQueryFrame( capture );
         if( !frame ) {
@@ -1333,15 +1334,26 @@ int main(int argc, char** argv) {
         updateGame();
 
         double now = timeNow();
-        if (now - last > 1.0 || matchState == MATCH_RUNNING) {
+        if (now - lastStartPacket > 5.0 && matchState == MATCH_RUNNING) {
+            pthread_mutex_lock( &serial_lock);
+            sendStartPacket++;
+            pthread_mutex_unlock( &serial_lock);
+
+            lastStartPacket = now;
+        }
+        if (now - lastPosUpdate > 1.0 || matchState == MATCH_RUNNING) {
             pthread_mutex_lock( &serial_lock);
             memcpy(serialObjects, objects, sizeof(serialObjects));
             sendPositionPacket = 1;
-            pthread_cond_signal( &serial_condition);
             pthread_mutex_unlock( &serial_lock);
 
-            last = now;
+            lastPosUpdate = now;
         }
+
+        pthread_mutex_lock( &serial_lock);
+        if (sendPositionPacket || sendStartPacket || sendStopPacket)
+            pthread_cond_signal( &serial_condition);
+        pthread_mutex_unlock( &serial_lock);
 
         // show the resultant image
         cvShowImage( WND_MAIN, out );

@@ -1386,6 +1386,7 @@ int main(int argc, char** argv) {
             pthread_cond_signal( &serial_condition);
         pthread_mutex_unlock( &serial_lock);
 
+        cvResetImageROI( out );
         // show the resultant image
         cvShowImage( WND_MAIN, out );
 

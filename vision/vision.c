@@ -1280,6 +1280,11 @@ int main(int argc, char** argv) {
             if (out->width != displayWidth) {
                 cvReleaseImage(&out);
                 out = cvCreateImage(cvSize(displayWidth, displayHeight), 8, 3);
+
+                cvSetImageROI(out, cvRect(out->height, 0, out->width-out->height, out->height));
+                cvSetImageROI(sidebar, cvRect(0, 0, out->width-out->height, out->height));
+                cvConvertScale(sidebar, out, 1, 0);
+                cvResetImageROI(out);
             }
         } else {
             if (out->width != img->width) {
@@ -1288,18 +1293,18 @@ int main(int argc, char** argv) {
             }
         }
 
+        cvSetImageROI(out, cvRect(0, 0, out->height, out->height));
+
         CvMat *M = cvCreateMat(3,3, CV_32FC1);
         cvMatMul(displayMatrix, projection, M);
         cvWarpPerspective(img, out, M, CV_INTER_LINEAR + CV_WARP_FILL_OUTLIERS, CV_RGB(0,0,0));
         cvReleaseMat(&M);
 
-        if (warpDisplay) {
+        cvResetImageROI(out);
+
+        //if (warpDisplay) {
             //cvRectangle(out, cvPoint(frameHeight,0), cvPoint(frameWidth,frameHeight), CV_RGB(0,0,0), CV_FILLED, 0, 0);
-            cvSetImageROI(out, cvRect(out->height, 0, out->width-out->height, out->height));
-            cvSetImageROI(sidebar, cvRect(0, 0, out->width-out->height, out->height));
-            cvConvertScale(sidebar, out, 1, 0);
-            cvResetImageROI(out);
-        }
+        //}
 
         if (!grayscale)
             grayscale = cvCreateImage(cvSize(img->width, img->height), 8, 1);

@@ -5,12 +5,13 @@
 #include <termios.h>
 #include <unistd.h>
 
+#define BAUD B19200
 const char *device = "/dev/ttyUSB0";
 
 int fd;
 
 int serial_open(const char *garbage){
-    fd = open(device, O_RDWR | O_NOCTTY | O_NDELAY);
+    fd = open(device, O_RDWR | O_NOCTTY);
     if(fd == -1) {
         printf( "failed to open port\n" );
         return 0;
@@ -61,7 +62,7 @@ int serial_open(const char *garbage){
     // Communication speed (simple version, using the predefined
     // constants)
     //
-    if(cfsetispeed(&config, B19200) < 0 || cfsetospeed(&config, B19200) < 0) {
+    if(cfsetispeed(&config, BAUD) < 0 || cfsetospeed(&config, BAUD) < 0) {
          printf("error: couldn't set baud!\n");
          return 0;
     }

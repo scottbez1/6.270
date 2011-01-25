@@ -18,11 +18,11 @@ control[0]:0x980900:1=144
 # Contrast +
 control[1]:0x980901:1=53
 # Saturation +
-control[2]:0x980902:1=55
+control[2]:0x980902:1=79
 # Gain +
 control[4]:0x980913:1=255
 # White Balance Temperature +
-control[6]:0x98091a:1=230
+control[6]:0x98091a:1=0
 # Sharpness +
 control[7]:0x98091b:1=205
 # Backlight Compensation +

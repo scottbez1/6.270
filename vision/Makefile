@@ -14,7 +14,8 @@ OUTPUTS = vision calibrate circledetect
 UNAME := $(shell uname)
 ifeq ($(UNAME), Linux)
 LOCATION=/usr/local
-LIBS=-lm -lcv -lcxcore -lhighgui -lcvaux
+#LIBS=-lm -lcv -lcxcore -lhighgui -lcvaux
+LIBS=-lm -lopencv_core -lopencv_highgui -lopencv_imgproc -lopencv_video -lopencv_calib3d
 CFLAGS += -D LINUX
 endif
 ifeq ($(UNAME), Darwin)

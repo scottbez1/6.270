@@ -61,8 +61,8 @@ int ball_threshold = 90;
 CvFont font, boldFont;
 CvMemStorage *storage;
 CvCapture *capture;
-float frameWidth;
-float frameHeight;
+float frameWidth, frameHeight;
+const float displayWidth = 1024, displayHeight = 768;
 
 int cvPrintf(IplImage *img, CvPoint pt, CvScalar color, const char *format, ...);
 
@@ -85,7 +85,8 @@ void computeDisplayMatrix() {
         CvMat *M = cvCreateMat(3,3, CV_32FC1);
 
         CvPoint2D32f src[4] = {cvPoint2D32f(X_MIN,Y_MAX),cvPoint2D32f(X_MAX,Y_MAX),cvPoint2D32f(X_MAX,Y_MIN),cvPoint2D32f(X_MIN,Y_MIN)};
-        CvPoint2D32f dst[4] = {cvPoint2D32f(0,0),cvPoint2D32f(frameHeight,0),cvPoint2D32f(frameHeight,frameHeight),cvPoint2D32f(0,frameHeight)};
+        //CvPoint2D32f dst[4] = {cvPoint2D32f(0,0),cvPoint2D32f(frameHeight,0),cvPoint2D32f(frameHeight,frameHeight),cvPoint2D32f(0,frameHeight)};
+        CvPoint2D32f dst[4] = {cvPoint2D32f(0,0),cvPoint2D32f(displayHeight,0),cvPoint2D32f(displayHeight,displayHeight),cvPoint2D32f(0,displayHeight)};
 
         cvGetPerspectiveTransform(src, dst, M);
 
@@ -967,8 +968,8 @@ void preserveValues(int id) {
 int initUI() {
     cvInitFont(&font, CV_FONT_HERSHEY_SIMPLEX, 0.5, 0.5, 0, 0, CV_AA);
     cvInitFont(&boldFont, CV_FONT_HERSHEY_SIMPLEX, 1.0, 1.0, 0, 2, CV_AA);
-    cvNamedWindow( WND_MAIN, 0 );
-    cvResizeWindow( WND_MAIN, 1024, 768);
+    cvNamedWindow( WND_MAIN, 1 );
+    cvResizeWindow( WND_MAIN, displayWidth, displayHeight);
     cvNamedWindow( WND_CONTROLS, 1);
     cvResizeWindow( WND_CONTROLS, 200, 400);
 #if SHOW_FILTERED_OUTPUT
@@ -1266,6 +1267,18 @@ int main(int argc, char** argv) {
         if (!out)
             out = cvCreateImage(cvSize(img->width, img->height), 8, 3);
 
+        if (warpDisplay) {
+            if (out->width != displayWidth) {
+                cvReleaseImage(&out);
+                out = cvCreateImage(cvSize(displayWidth, displayHeight), 8, 3);
+            }
+        } else {
+            if (out->width != img->width) {
+                cvReleaseImage(&out);
+                out = cvCreateImage(cvSize(img->width, img->height), 8, 3);
+            }
+        }
+
         CvMat *M = cvCreateMat(3,3, CV_32FC1);
         cvMatMul(displayMatrix, projection, M);
         cvWarpPerspective(img, out, M, CV_INTER_LINEAR + CV_WARP_FILL_OUTLIERS, CV_RGB(0,0,0));
@@ -1273,8 +1286,8 @@ int main(int argc, char** argv) {
 
         if (warpDisplay) {
             //cvRectangle(out, cvPoint(frameHeight,0), cvPoint(frameWidth,frameHeight), CV_RGB(0,0,0), CV_FILLED, 0, 0);
-            cvSetImageROI(out, cvRect(frameHeight, 0, frameWidth-frameHeight, frameHeight));
-            cvSetImageROI(sidebar, cvRect(0, 0, frameWidth-frameHeight, frameHeight));
+            cvSetImageROI(out, cvRect(out->height, 0, out->width-out->height, out->height));
+            cvSetImageROI(sidebar, cvRect(0, 0, out->width-out->height, out->height));
             cvConvertScale(sidebar, out, 1, 0);
             cvResetImageROI(out);
         }

@@ -897,9 +897,11 @@ void *runSerial(void *params){
         sendPos = sendPositionPacket;
         sendPositionPacket = 0;
         sendStart = sendStartPacket;
-        sendStartPacket = 0;
+        if (sendStartPacket)
+            sendStartPacket--;
         sendStop = sendStopPacket;
-        sendStopPacket = 0;
+        if (sendStopPacket)
+            sendStopPacket--;
         if (sendPos)
             memcpy(localObjects, serialObjects, sizeof(localObjects));
         pthread_mutex_unlock(&serial_lock);
@@ -1043,7 +1045,7 @@ int handleKeypresses() {
         matchStartTime = timeNow(); //set the match start time
         matchState = MATCH_RUNNING;
         pthread_mutex_lock(&serial_lock);
-        sendStartPacket = 1; //set flag for start packet to be sent
+        sendStartPacket = 10; //set flag for start packet to be sent
         pthread_mutex_unlock(&serial_lock);
         srand(randomGoalSeed); // reseed random
     } else if ( c == 's' ) {
@@ -1081,7 +1083,7 @@ void updateGame() {
     if ((now - matchStartTime) >= MATCH_LEN_SECONDS && matchState != MATCH_ENDED) {
         matchState = MATCH_ENDED;
         pthread_mutex_lock(&serial_lock);
-        sendStopPacket = 1;
+        sendStopPacket = 10;
         pthread_mutex_unlock(&serial_lock);
     } else {
         //checkGoals();

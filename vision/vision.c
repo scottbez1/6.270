@@ -78,6 +78,8 @@ int nextExclude = 0;
 CvPoint2D32f excludeCorners[10][4];
 int sampleColors = 0;
 
+int thisBoard = 0;
+
 void computeDisplayMatrix() {
     if (displayMatrix)
         cvReleaseMat(&displayMatrix);
@@ -893,7 +895,7 @@ void sendPositions(board_coord objects[NUM_OBJECTS]) {
     packet_buffer pos;
     for (int i = 0; i<8; i++){
         pos.type = POSITION;
-        pos.board = 0;
+        pos.board = thisBoard;
         pos.seq_no = i;
         memcpy(&pos.payload, &objects[4*i], sizeof(board_coord)*4);
         serial_send_packet(&pos);
@@ -1189,6 +1191,11 @@ void sampleColorModel(IplImage *img) {
 }
 
 int main(int argc, char** argv) {
+    if (argc != 3){
+        fprintf(stderr,"Need 2 arguments: [camera number] [serial port]\n");
+        exit(-1);
+    }
+
     projectionPoints[0] = cvPoint2D32f(0, 0);
     projectionPoints[1] = cvPoint2D32f(frameWidth, 0);
     projectionPoints[2] = cvPoint2D32f(frameWidth, frameHeight);
@@ -1240,6 +1247,8 @@ int main(int argc, char** argv) {
     if (initCV(argc>1 ? argv[1] : NULL)) return -1;
     if (initGame()) return -1;
 
+    thisBoard = atoi(argv[1]); //use camera id as board number
+    printf("This board: %i\n", thisBoard);
     printf("To initialize coordinate projection, press <i>\n");
 
     IplImage *mask8 = 0, *mask = 0, *dev = 0, *grayscale = 0;

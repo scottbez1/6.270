@@ -6,11 +6,10 @@
 #include <unistd.h>
 
 #define BAUD B19200
-const char *device = "/dev/ttyUSB0";
 
 int fd;
 
-int serial_open(const char *garbage){
+int serial_open(const char *device){
     fd = open(device, O_RDWR | O_NOCTTY);
     if(fd == -1) {
         printf( "failed to open port\n" );
@@ -90,7 +89,7 @@ void serial_send_packet(packet_buffer* packet){
     uint8_t len = sizeof(packet_buffer);
     write(fd, &len, 1);
     write(fd, packet, len);
-    usleep(20000);
+    usleep(40000);
 }
 
 void serial_close(){

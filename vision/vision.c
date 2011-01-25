@@ -1239,6 +1239,7 @@ int main(int argc, char** argv) {
     for (int i=0; i<MAX_ROBOT_ID+1; i++)
         sightings[i] = 0;
 
+    double last = timeNow();
     while(1) {
         IplImage *frame = cvQueryFrame( capture );
         if( !frame ) {
@@ -1319,11 +1320,16 @@ int main(int argc, char** argv) {
             break;
         updateGame();
 
-        pthread_mutex_lock( &serial_lock);
-        memcpy(serialObjects, objects, sizeof(serialObjects));
-        sendPositionPacket = 1;
-        pthread_cond_signal( &serial_condition);
-        pthread_mutex_unlock( &serial_lock);
+        double now = timeNow();
+        if (now - last > 1.0 || matchState == MATCH_RUNNING) {
+            pthread_mutex_lock( &serial_lock);
+            memcpy(serialObjects, objects, sizeof(serialObjects));
+            sendPositionPacket = 1;
+            pthread_cond_signal( &serial_condition);
+            pthread_mutex_unlock( &serial_lock);
+
+            last = now;
+        }
 
         // show the resultant image
         cvShowImage( WND_MAIN, out );

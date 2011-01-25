@@ -967,7 +967,8 @@ void preserveValues(int id) {
 int initUI() {
     cvInitFont(&font, CV_FONT_HERSHEY_SIMPLEX, 0.5, 0.5, 0, 0, CV_AA);
     cvInitFont(&boldFont, CV_FONT_HERSHEY_SIMPLEX, 1.0, 1.0, 0, 2, CV_AA);
-    cvNamedWindow( WND_MAIN, 1 );
+    cvNamedWindow( WND_MAIN, 0 );
+    cvResizeWindow( WND_MAIN, 1024, 768);
     cvNamedWindow( WND_CONTROLS, 1);
     cvResizeWindow( WND_CONTROLS, 200, 400);
 #if SHOW_FILTERED_OUTPUT
@@ -1242,7 +1243,7 @@ int main(int argc, char** argv) {
     printf("To initialize coordinate projection, press <i>\n");
 
     IplImage *mask8 = 0, *mask = 0, *dev = 0, *grayscale = 0;
-    IplImage *out = 0;
+    IplImage *out = 0, *sidebar = cvLoadImage("sidebar.png", CV_LOAD_IMAGE_COLOR);
 
     warpDisplay = 1;
     projection_init(&projection, &invProjection, projectionPoints, bounds);
@@ -1270,8 +1271,13 @@ int main(int argc, char** argv) {
         cvWarpPerspective(img, out, M, CV_INTER_LINEAR + CV_WARP_FILL_OUTLIERS, CV_RGB(0,0,0));
         cvReleaseMat(&M);
 
-        if (warpDisplay)
-            cvRectangle(out, cvPoint(frameHeight,0), cvPoint(frameWidth,frameHeight), CV_RGB(0,0,0), CV_FILLED, 0, 0);
+        if (warpDisplay) {
+            //cvRectangle(out, cvPoint(frameHeight,0), cvPoint(frameWidth,frameHeight), CV_RGB(0,0,0), CV_FILLED, 0, 0);
+            cvSetImageROI(out, cvRect(frameHeight, 0, frameWidth-frameHeight, frameHeight));
+            cvSetImageROI(sidebar, cvRect(0, 0, frameWidth-frameHeight, frameHeight));
+            cvConvertScale(sidebar, out, 1, 0);
+            cvResetImageROI(out);
+        }
 
         if (!grayscale)
             grayscale = cvCreateImage(cvSize(img->width, img->height), 8, 1);

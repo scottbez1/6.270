@@ -1289,14 +1289,14 @@ int main(int argc, char** argv) {
                 cvConvertScale(sidebar, out, 1, 0);
                 cvResetImageROI(out);
             }
+            cvSetImageROI(out, cvRect(0, 0, out->height, out->height));
         } else {
             if (out->width != img->width) {
                 cvReleaseImage(&out);
                 out = cvCreateImage(cvSize(img->width, img->height), 8, 3);
             }
+            cvResetImageROI(out);
         }
-
-        cvSetImageROI(out, cvRect(0, 0, out->height, out->height));
 
         CvMat *M = cvCreateMat(3,3, CV_32FC1);
         cvMatMul(displayMatrix, projection, M);

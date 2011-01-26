@@ -23,7 +23,7 @@ board_coord robots[MAX_ROBOT_ID+1];
 
 float bounds[4] = {X_MIN, X_MAX, Y_MIN, Y_MAX};
 
-#define SHOW_FILTERED_OUTPUT 0
+#define SHOW_FILTERED_OUTPUT 1
 
 const char *WND_MAIN = "6.270 Vision System";
 const char *WND_FILTERED = "Filtered Video";
@@ -249,10 +249,10 @@ void processBalls(IplImage *img, IplImage *gray, IplImage *out){
     CvSeq *contours;
 
     cvSmooth(gray, gray, CV_GAUSSIAN, 5, 5, 0, 0);
+    cvThreshold( gray, gray, ball_threshold, 255, CV_THRESH_BINARY );
 #if SHOW_FILTERED_OUTPUT
     cvShowImage( WND_FILTERED, gray );
 #endif
-    cvThreshold( gray, gray, ball_threshold, 255, CV_THRESH_BINARY );
 
     // find contours and store them all as a list
     cvFindContours( gray, storage, &contours, sizeof(CvContour),
@@ -288,7 +288,7 @@ void processBalls(IplImage *img, IplImage *gray, IplImage *out){
             }
 
             //check to make sure the boundRect is relatively square
-            if (lesserDim < 0.8 * greaterDim)
+            if (lesserDim < 0.6 * greaterDim)
                 continue;
 
             CvPoint2D32f center = project(projection, cvPoint2D32f(boundRect.x + boundRect.width/2,boundRect.y+boundRect.height/2));
@@ -316,7 +316,7 @@ void processBalls(IplImage *img, IplImage *gray, IplImage *out){
                 goodPoints += get_5pixel_avg(gray,(x1*1+x2*3)/4,(y1 + y2)/2) > 0.9;
                 goodPoints += get_5pixel_avg(gray,(x1*3+x2*1)/4,(y1 + y2)/2) > 0.9;
 
-                if (goodPoints >= 8){
+                if (goodPoints >= 7){
                     CvPoint2D32f display_pt = project(displayMatrix, center);
                     CvScalar color = CV_RGB(0,255,255);
                     int thickness = 2;

@@ -90,7 +90,7 @@ void computeDisplayMatrix() {
 
         CvPoint2D32f src[4] = {cvPoint2D32f(X_MIN,Y_MAX),cvPoint2D32f(X_MAX,Y_MAX),cvPoint2D32f(X_MAX,Y_MIN),cvPoint2D32f(X_MIN,Y_MIN)};
         //CvPoint2D32f dst[4] = {cvPoint2D32f(0,0),cvPoint2D32f(frameHeight,0),cvPoint2D32f(frameHeight,frameHeight),cvPoint2D32f(0,frameHeight)};
-        CvPoint2D32f dst[4] = {cvPoint2D32f(0,0),cvPoint2D32f(displayHeight,0),cvPoint2D32f(displayHeight,displayHeight),cvPoint2D32f(0,displayHeight)};
+        CvPoint2D32f dst[4] = {cvPoint2D32f(displayHeight,0),cvPoint2D32f(displayHeight,displayHeight),cvPoint2D32f(0,displayHeight),cvPoint2D32f(0,0)};
 
         cvGetPerspectiveTransform(src, dst, M);
 

@@ -876,12 +876,12 @@ void updateHUD(IplImage *out) {
             s = 0;
         if (s > MATCH_LEN_SECONDS-1) {
             int state = s - MATCH_LEN_SECONDS + 1;
-            int red = (state >= 2)+1;
-            int yel = (state == 1)+1;
-            int grn = (state <= 0)+1;
-            cvCircle(out, cvPoint(384*8, 224*8), 65*8, CV_RGB(128*red,0,0), -1, CV_AA, 3);
-            cvCircle(out, cvPoint(384*8, 384*8), 65*8, CV_RGB(128*yel,128*yel,0), -1, CV_AA, 3);
-            cvCircle(out, cvPoint(384*8, 544*8), 65*8, CV_RGB(0,128*grn,0), -1, CV_AA, 3);
+            int red = (state >= 2);
+            int yel = (state == 1);
+            int grn = (state <= 0);
+            cvCircle(out, cvPoint((768+128)*8, 224*8), 65*8, red ? CV_RGB(255,40,40) : CV_RGB(64,0,0), -1, CV_AA, 3);
+            cvCircle(out, cvPoint((768+128)*8, 384*8), 65*8, yel ? CV_RGB(255,255,80) : CV_RGB(64,64,0), -1, CV_AA, 3);
+            cvCircle(out, cvPoint((768+128)*8, 544*8), 65*8, grn ? CV_RGB(80,255,80) : CV_RGB(0,64,0), -1, CV_AA, 3);
             s = MATCH_LEN_SECONDS;
         }
 

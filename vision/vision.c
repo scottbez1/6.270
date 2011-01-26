@@ -518,27 +518,37 @@ void drawCallout(IplImage *out, float cx, float cy, float radius, int id) {
     int count[1];
 
     char buf[256];
+
+    sprintf(buf, "Team 00");
+    CvSize maxTextSize;
+    int baseline;
+    cvGetTextSize(buf, &font, &maxTextSize, &baseline);
+
     sprintf(buf, "Team %i", id);
     CvSize textSize;
-    int baseline;
     cvGetTextSize(buf, &font, &textSize, &baseline);
 
-    float y = cy+radius+15+textSize.height;
+    float y;
+    float flipY = (warpDisplay ? displayHeight : frameHeight) - 40;
+    int down = cy+radius+20+textSize.height < flipY;
 
-    if (y > frameHeight-10)
-        y = cy-radius-15;
+    if (down)
+        y = cy+radius+20+textSize.height;
+    else
+        y = cy-radius-20;
 
     cvPrintf(out, cvPoint(cx-textSize.width/2.0, y-baseline), CV_RGB(0,255,255), "Team %i", id);
 
+    float lx = cx-maxTextSize.width/2-10;
     v[0] = cvPoint(8*(cx-radius), 8*cy);
-    v[1] = cvPoint(8*(cx-(radius+15)), 8*cy);
-    v[2] = cvPoint(8*(cx-(radius+15)), 8*y);
+    v[1] = cvPoint(8*lx, 8*cy);
+    v[2] = cvPoint(8*lx, 8*y);
     v[3] = cvPoint(8*(cx+textSize.width/2), 8*y);
 
     p[0] = &v[0];
     count[0] = 4;
 
-    cvPolyLine(out, p, count, 1, 0, CV_RGB(0,255,255), 1, CV_AA, 3);
+    cvPolyLine(out, p, count, 1, 0, CV_RGB(0,255,255), 2, CV_AA, 3);
 }
 
 void drawSquare(IplImage *out, IplImage *gray, CvPoint pt[4], CvPoint2D32f bit_pt_true[16], int id, CvPoint2D32f orientationHandle, float theta) {
@@ -974,8 +984,8 @@ void preserveValues(int id) {
 }
 
 int initUI() {
-    cvInitFont(&font, CV_FONT_HERSHEY_SIMPLEX, 0.5, 0.5, 0, 0, CV_AA);
-    cvInitFont(&boldFont, CV_FONT_HERSHEY_SIMPLEX, 1.0, 1.0, 0, 2, CV_AA);
+    cvInitFont(&font, CV_FONT_HERSHEY_SIMPLEX, 1.0, 1.0, 0, 2, CV_AA);
+    cvInitFont(&boldFont, CV_FONT_HERSHEY_SIMPLEX, 2.0, 2.0, 0, 4, CV_AA);
     cvNamedWindow( WND_MAIN, 1 );
     cvResizeWindow( WND_MAIN, displayWidth, displayHeight);
     cvNamedWindow( WND_CONTROLS, 1);
@@ -1394,6 +1404,17 @@ int main(int argc, char** argv) {
         pthread_mutex_unlock( &serial_lock);
 
         cvResetImageROI( out );
+
+        if (warpDisplay) {
+            char buf[256];
+            CvSize textSize;
+            int baseline;
+
+            sprintf(buf, "Table");
+            cvGetTextSize(buf, &font, &textSize, &baseline);
+            cvPutText(out, buf, cvPoint((displayHeight+displayWidth-textSize.width)/2, 384), &boldFont, CV_RGB(0,255,255));
+        }
+
         // show the resultant image
         cvShowImage( WND_MAIN, out );
 

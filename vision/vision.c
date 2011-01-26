@@ -1161,6 +1161,13 @@ int handleKeypresses() {
         hasStarted = 0;
         matchStartTime = timeNow()+2.0; //set the match start time
         matchState = MATCH_RUNNING;
+    } else if ( c == 'R' ) {
+        matchStartTime = timeNow()-MATCH_LEN_SECONDS;
+        pthread_mutex_lock(&serial_lock);
+        sendStartPacket = 0;
+        sendStopPacket = 0;
+        matchState = MATCH_ENDED;
+        pthread_mutex_unlock(&serial_lock);
     } else if ( c == 's' ) {
         mouseOperation = PICK_SAMPLE_CORNERS;
         nextMousePoint = 0;

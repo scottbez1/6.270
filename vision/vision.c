@@ -80,6 +80,7 @@ CvPoint2D32f excludeCorners[10][4];
 int sampleColors = 0;
 
 int thisBoard = 0;
+char boardLetter = '*';
 
 void computeDisplayMatrix() {
     if (displayMatrix)
@@ -351,18 +352,20 @@ void processBalls(IplImage *img, IplImage *gray, IplImage *out){
 
     matchObjects(objects, tempObjects);
 
-    for (int i = 2; i<NUM_OBJECTS; i++) {
-        if (objects[i].id != 0xFF) {
-            continue;
-        }
-        CvPoint2D32f p = project(displayMatrix, cvPoint2D32f(objects[i].x,objects[i].y));
+    if (!warpDisplay) {
+        for (int i = 2; i<NUM_OBJECTS; i++) {
+            if (objects[i].id != 0xFF) {
+                continue;
+            }
+            CvPoint2D32f p = project(displayMatrix, cvPoint2D32f(objects[i].x,objects[i].y));
 
-        char buf[256];
-        sprintf(buf, "%d", i);
-        CvSize textSize;
-        int baseline;
-        cvGetTextSize(buf, &font, &textSize, &baseline);
-        cvPutText(out, buf, cvPoint(p.x-textSize.width/2.0, p.y+textSize.height+10+5), &font, CV_RGB(0,255,255));
+            char buf[256];
+            sprintf(buf, "%d", i);
+            CvSize textSize;
+            int baseline;
+            cvGetTextSize(buf, &font, &textSize, &baseline);
+            cvPutText(out, buf, cvPoint(p.x-textSize.width/2.0, p.y+textSize.height+10+5), &font, CV_RGB(0,255,255));
+        }
     }
 
 }
@@ -1195,8 +1198,8 @@ void sampleColorModel(IplImage *img) {
 }
 
 int main(int argc, char** argv) {
-    if (argc != 3){
-        fprintf(stderr,"Need 2 arguments: [camera number] [serial port]\n");
+    if (argc != 4){
+        fprintf(stderr,"Need 3 arguments: [camera number] [serial port] [table letter]\n");
         exit(-1);
     }
 
@@ -1252,7 +1255,8 @@ int main(int argc, char** argv) {
     if (initGame()) return -1;
 
     thisBoard = atoi(argv[1]); //use camera id as board number
-    printf("This board: %i\n", thisBoard);
+    boardLetter = argv[3][0]; //use camera id as board number
+    printf("This board: %i (%c)\n", thisBoard, boardLetter);
     printf("To initialize coordinate projection, press <i>\n");
 
     IplImage *mask8 = 0, *mask = 0, *dev = 0, *grayscale = 0;

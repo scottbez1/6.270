@@ -69,15 +69,15 @@ float frameWidth, frameHeight;
 const float displayWidth = 1024, displayHeight = 768;
 
 void music() {
-    system("/home/sixtwoseventy/music-ctl.py");
+    system("/home/sixtwoseventy/music-ctl.py &");
 }
 
 void music_off() {
-    system("/home/sixtwoseventy/music-ctl.py shutup");
+    system("/home/sixtwoseventy/music-ctl.py shutup &");
 }
 
 void music_fade() {
-    system("/home/sixtwoseventy/music-ctl.py fade");
+    system("/home/sixtwoseventy/music-ctl.py fade &");
 }
 
 
@@ -88,6 +88,7 @@ CvMat *displayMatrix = 0; // maps from physical coords to display coords
 CvMat *invProjection = 0; // maps from physical coords to frame coords
 
 int warpDisplay = 0, showFPS = 0;
+int showPhotoFinish = 0;
 
 CvPoint2D32f projectionPoints[4];
 CvPoint2D32f sampleCorners[4];
@@ -1211,6 +1212,8 @@ int handleKeypresses() {
         saveExclusions();
     } else if ( c == 'f' ) {
         showFPS = !showFPS;
+    } else if ( c == 'z' ) {
+        showPhotoFinish = !showPhotoFinish;
     }
     return 0;
 }
@@ -1385,6 +1388,7 @@ int main(int argc, char** argv) {
     if (initGame()) return -1;
 
     IplImage *mask8 = 0, *mask = 0, *dev = 0, *grayscale = 0, *out = 0, *sidebar = 0;
+    IplImage *photoFinish = 0;
     {
         sprintf(buf, "sidebar%c.png", boardLetter);
         IplImage *sidebar2 = cvLoadImage(buf, CV_LOAD_IMAGE_COLOR);
@@ -1516,7 +1520,14 @@ int main(int argc, char** argv) {
 
         if (handleKeypresses())
             break;
+        int stateBefore = matchState;
         updateGame();
+        if (stateBefore == MATCH_RUNNING && matchState == MATCH_ENDED) {
+            if (photoFinish)
+                cvReleaseImage(&photoFinish);
+            photoFinish = cvCloneImage(out);
+            showPhotoFinish = 1;
+        }
 
         double now = timeNow();
         if (now - lastStartPacket > 5.0 && matchState == MATCH_RUNNING) {
@@ -1541,7 +1552,7 @@ int main(int argc, char** argv) {
         pthread_mutex_unlock( &serial_lock);
 
         // show the resultant image
-        cvShowImage( WND_MAIN, out );
+        cvShowImage( WND_MAIN, (showPhotoFinish && photoFinish) ? photoFinish : out );
 
         cvReleaseImage(&img);
         cvClearMemStorage(storage); // clear memory storage - reset free space position

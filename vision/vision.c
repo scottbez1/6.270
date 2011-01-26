@@ -1,6 +1,7 @@
 #include "vision.h"
 #include "table.h"
 #include <strings.h>
+#include <stdlib.h>
 
 #define bool int
 
@@ -66,6 +67,19 @@ CvMemStorage *storage;
 CvCapture *capture;
 float frameWidth, frameHeight;
 const float displayWidth = 1024, displayHeight = 768;
+
+void music() {
+    system("/home/sixtwoseventy/music-ctl.py");
+}
+
+void music_off() {
+    system("/home/sixtwoseventy/music-ctl.py shutup");
+}
+
+void music_fade() {
+    system("/home/sixtwoseventy/music-ctl.py fade");
+}
+
 
 int cvPrintf(IplImage *img, CvFont *font, CvPoint pt, CvScalar color, const char *format, ...);
 

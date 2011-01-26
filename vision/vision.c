@@ -59,19 +59,19 @@ int min_ball_dim = 6;
 int max_ball_dim = 16;
 int ball_threshold = 90;
 
-CvFont font, boldFont;
+CvFont font, titleFonts[4], hudFont;
 CvMemStorage *storage;
 CvCapture *capture;
 float frameWidth, frameHeight;
 const float displayWidth = 1024, displayHeight = 768;
 
-int cvPrintf(IplImage *img, CvPoint pt, CvScalar color, const char *format, ...);
+int cvPrintf(IplImage *img, CvFont *font, CvPoint pt, CvScalar color, const char *format, ...);
 
 CvMat *projection = 0; // maps from frame coords to physical coords
 CvMat *displayMatrix = 0; // maps from physical coords to display coords
 CvMat *invProjection = 0; // maps from physical coords to frame coords
 
-int warpDisplay = 0;
+int warpDisplay = 0, showFPS = 0;
 
 CvPoint2D32f projectionPoints[4];
 CvPoint2D32f sampleCorners[4];
@@ -459,7 +459,7 @@ CvSeq *findCandidateSquares(IplImage *tgray) {
     return squares;
 }
 
-int cvPrintf(IplImage *img, CvPoint pt, CvScalar color, const char *format, ...) {
+int cvPrintf(IplImage *img, CvFont *font, CvPoint pt, CvScalar color, const char *format, ...) {
     static char buffer[2048];
     va_list ap;
     int count;
@@ -468,7 +468,7 @@ int cvPrintf(IplImage *img, CvPoint pt, CvScalar color, const char *format, ...)
     count = vsnprintf(buffer, 2048, format, ap);
     va_end(ap);
 
-    cvPutText(img, buffer, pt, &font, color);
+    cvPutText(img, buffer, pt, font, color);
     return count;
 }
 
@@ -541,7 +541,7 @@ void drawCallout(IplImage *out, float cx, float cy, float radius, int id) {
     else
         y = cy-radius-20;
 
-    cvPrintf(out, cvPoint(cx-textSize.width/2.0, y-baseline), CV_RGB(0,255,255), "Team %i", id);
+    cvPrintf(out, &font, cvPoint(cx-textSize.width/2.0, y-baseline), CV_RGB(0,255,255), "Team %i", id);
 
     float lx = cx-maxTextSize.width/2-10;
     v[0] = cvPoint(8*(cx-radius), 8*cy);
@@ -821,6 +821,21 @@ void processRobotDetection(CvPoint2D32f trueCenter, float theta, int id, CvPoint
         printf("X: %04i, Y: %04i, theta: %04i, theta_act: %f, proj_x:%f, proj_y:%f \n", x, y, t, theta, orientationHandle->x, orientationHandle->y);
 }
 
+void centeredFitTitleText(IplImage *out, CvScalar color, float y, float w, char *buf) {
+    CvSize textSize;
+    int baseline;
+
+    int i;
+    for (i=0; i<4; i++) {
+        cvGetTextSize(buf, &titleFonts[i], &textSize, &baseline);
+        if (textSize.width<w)
+            break;
+    }
+    if (i==4)
+        i = 3;
+    cvPutText(out, buf, cvPoint((displayHeight+displayWidth-textSize.width)/2.0, y+textSize.height/2.0), &titleFonts[i], color);
+}
+
 void updateHUD(IplImage *out) {
     static double last_frame = 0.0;
     static float last_fps = 0.0;
@@ -830,23 +845,53 @@ void updateHUD(IplImage *out) {
     fps = (10*last_fps + fps) / 11.;
     last_fps = fps;
 
-    if (nextMousePoint!=4)
-        cvPrintf(out, cvPoint(2, 20), CV_RGB(255,0,0), "%s: Click the %s corner", mouseOperationLabel[mouseOperation], mouseCornerLabel[nextMousePoint]);
-    if (projection && !warpDisplay) {
-        CvPoint corners[4], *rect = corners;
-        int cornerCount = 4;
-        for (int i=0; i<4; i++)
-            corners[i] = cvPoint(projectionPoints[i].x*8, projectionPoints[i].y*8);
-        cvPolyLine(out, &rect, &cornerCount, 1, 1, CV_RGB(0,255,255), 2, CV_AA, 3);
-    }
+    if (!warpDisplay) {
+        if (nextMousePoint!=4)
+            cvPrintf(out, &hudFont, cvPoint(2, 20), CV_RGB(255,0,0), "%s: Click the %s corner", mouseOperationLabel[mouseOperation], mouseCornerLabel[nextMousePoint]);
+        if (projection && !warpDisplay) {
+            CvPoint corners[4], *rect = corners;
+            int cornerCount = 4;
+            for (int i=0; i<4; i++)
+                corners[i] = cvPoint(projectionPoints[i].x*8, projectionPoints[i].y*8);
+            cvPolyLine(out, &rect, &cornerCount, 1, 1, CV_RGB(0,255,255), 2, CV_AA, 3);
+        }
 
-    CvPoint textPoint = cvPoint(5, out->height-20);
-    CvScalar textColor = CV_RGB(0,255,255);
-    if (matchState == MATCH_ENDED)
-        cvPrintf(out, textPoint, textColor, "Match ended.  Press <r> to start a new match.  %.1f FPS", fps);
-    else if (matchState == MATCH_RUNNING) {
+        CvPoint textPoint = cvPoint(5, out->height-20);
+        CvScalar textColor = CV_RGB(0,255,255);
+        if (matchState == MATCH_ENDED)
+            cvPrintf(out, &hudFont, textPoint, textColor, "Match ended.  Press <r> to start a new match.  %.1f FPS", fps);
+        else if (matchState == MATCH_RUNNING) {
+            float s = MATCH_LEN_SECONDS - (now - matchStartTime);
+            cvPrintf(out, &hudFont, textPoint, textColor, "Remaining time: %02d:%6.3f seconds.  %.1f FPS", ((int)s)/60, fmod(s,60), fps);
+        }
+    } else {
+        char buf[256];
+        sprintf(buf, "Remaining Time:", fps);
+        centeredFitTitleText(out, CV_RGB(255,255,255), 640, 200, buf);
+
         float s = MATCH_LEN_SECONDS - (now - matchStartTime);
-        cvPrintf(out, textPoint, textColor, "Remaining time: %02d:%6.3f seconds.  %.1f FPS", ((int)s)/60, fmod(s,60), fps);
+        if (s < 0)
+            s = 0;
+
+        if (s > 15)
+            sprintf(buf, "%2d:%04.1fs", ((int)s)/60, fmod(s,60));
+        else
+            sprintf(buf, "%5.2fs", fmod(s,60));
+
+        CvScalar color;
+        if (s < 15 && s != 0)
+            color = CV_RGB(255,0,0);
+        else
+            color = CV_RGB(255,255,255);
+        centeredFitTitleText(out, color, 670, 200, buf);
+
+        if (showFPS) {
+            sprintf(buf, "%4.1f FPS", fps);
+            centeredFitTitleText(out, CV_RGB(255,255,255), 720, 200, buf);
+        }
+
+        centeredFitTitleText(out, CV_RGB(255,255,255), 490, 200, "Princess BabyCakes");
+        centeredFitTitleText(out, CV_RGB(255,255,255), 585, 200, "Lily");
     }
 }
 
@@ -991,7 +1036,12 @@ void preserveValues(int id) {
 
 int initUI() {
     cvInitFont(&font, CV_FONT_HERSHEY_SIMPLEX, 1.0, 1.0, 0, 2, CV_AA);
-    cvInitFont(&boldFont, CV_FONT_HERSHEY_SIMPLEX, 2.0, 2.0, 0, 4, CV_AA);
+    cvInitFont(&hudFont, CV_FONT_HERSHEY_SIMPLEX, 0.5, 0.5, 0, 0, CV_AA);
+    float w;
+    w=1.2;cvInitFont(&titleFonts[0], CV_FONT_HERSHEY_DUPLEX, w, w, 0, 1, CV_AA);
+    w=1.0;cvInitFont(&titleFonts[1], CV_FONT_HERSHEY_DUPLEX, w, w, 0, 1, CV_AA);
+    w=.8;cvInitFont(&titleFonts[2], CV_FONT_HERSHEY_DUPLEX, w, w, 0, 1, CV_AA);
+    w=.6;cvInitFont(&titleFonts[3], CV_FONT_HERSHEY_DUPLEX, w, w, 0, 1, CV_AA);
     cvNamedWindow( WND_MAIN, 1 );
     cvResizeWindow( WND_MAIN, displayWidth, displayHeight);
     cvNamedWindow( WND_CONTROLS, 1);
@@ -1112,6 +1162,8 @@ int handleKeypresses() {
             for (int j=0; j<4; j++)
                 excludeCorners[i][j] = cvPoint2D32f(0,0);
         saveExclusions();
+    } else if ( c == 'f' ) {
+        showFPS = !showFPS;
     }
     return 0;
 }
@@ -1282,7 +1334,10 @@ int main(int argc, char** argv) {
     IplImage *mask8 = 0, *mask = 0, *dev = 0, *grayscale = 0, *out = 0, *sidebar = 0;
     {
         sprintf(buf, "sidebar%c.png", boardLetter);
-        sidebar = cvLoadImage(buf, CV_LOAD_IMAGE_COLOR);
+        IplImage *sidebar2 = cvLoadImage(buf, CV_LOAD_IMAGE_COLOR);
+        sidebar = cvCreateImage(cvSize(sidebar2->width, sidebar2->height), 8, 3);
+        cvConvertScale(sidebar2, sidebar, 1, 0);
+        cvReleaseImage(&sidebar2);
     }
 
     warpDisplay = 1;
@@ -1310,12 +1365,11 @@ int main(int argc, char** argv) {
             if (out->width != displayWidth) {
                 cvReleaseImage(&out);
                 out = cvCreateImage(cvSize(displayWidth, displayHeight), 8, 3);
-
-                cvSetImageROI(out, cvRect(out->height, 0, out->width-out->height, out->height));
-                cvSetImageROI(sidebar, cvRect(0, 0, out->width-out->height, out->height));
-                cvConvertScale(sidebar, out, 1, 0);
-                cvResetImageROI(out);
             }
+            cvSetImageROI(out, cvRect(out->height, 0, out->width-out->height, out->height));
+            cvSetImageROI(sidebar, cvRect(0, 0, out->width-out->height, out->height));
+            cvCopy(sidebar, out, 0);
+            cvResetImageROI(out);
             cvSetImageROI(out, cvRect(0, 0, out->height, out->height));
         } else {
             if (out->width != img->width) {
@@ -1388,6 +1442,8 @@ int main(int argc, char** argv) {
         processCircles(img, out, circles);
 */
 
+        cvResetImageROI( out );
+
         updateHUD(out);
 
         if (handleKeypresses())
@@ -1415,17 +1471,6 @@ int main(int argc, char** argv) {
         if (sendPositionPacket || sendStartPacket || sendStopPacket)
             pthread_cond_signal( &serial_condition);
         pthread_mutex_unlock( &serial_lock);
-
-        cvResetImageROI( out );
-
-        if (warpDisplay) {
-            CvSize textSize;
-            int baseline;
-
-            sprintf(buf, "Table");
-            cvGetTextSize(buf, &font, &textSize, &baseline);
-            cvPutText(out, buf, cvPoint((displayHeight+displayWidth-textSize.width)/2, 384), &boldFont, CV_RGB(0,255,255));
-        }
 
         // show the resultant image
         cvShowImage( WND_MAIN, out );

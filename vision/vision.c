@@ -896,8 +896,9 @@ void updateHUD(IplImage *out) {
             cvCircle(out, cvPoint((768+128)*8, 224*8), 65*8, red ? CV_RGB(255,40,40) : CV_RGB(64,0,0), -1, CV_AA, 3);
             cvCircle(out, cvPoint((768+128)*8, 384*8), 65*8, yel ? CV_RGB(255,255,80) : CV_RGB(64,64,0), -1, CV_AA, 3);
             cvCircle(out, cvPoint((768+128)*8, 544*8), 65*8, grn ? CV_RGB(80,255,80) : CV_RGB(0,64,0), -1, CV_AA, 3);
-            s = MATCH_LEN_SECONDS;
         }
+        if (s > MATCH_LEN_SECONDS)
+            s = MATCH_LEN_SECONDS;
 
         if (s > 15)
             sprintf(buf, "%2d:%04.1fs", ((int)s)/60, fmod(s,60));

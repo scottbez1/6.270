@@ -101,7 +101,9 @@ void computeDisplayMatrix() {
 
 void saveExclusions() {
     CvMat matrix = cvMat(10,4,CV_32FC2,excludeCorners);
-    cvSave( "Exclusions.xml", &matrix, 0, 0, cvAttrList(0, 0) );
+    char buf[256];
+    sprintf(buf, "Exclusions%c.xml", boardLetter);
+    cvSave( buf, &matrix, 0, 0, cvAttrList(0, 0) );
 }
 
 void mouseHandler(int event, int x, int y, int flags, void *param) {
@@ -121,7 +123,9 @@ void mouseHandler(int event, int x, int y, int flags, void *param) {
                     projection_init(&projection, &invProjection, projectionPoints, bounds);
                     computeDisplayMatrix();
                     CvMat matrix = cvMat(4,1,CV_32FC2,projectionPoints);
-                    cvSave( "Projection.xml", &matrix, 0, 0, cvAttrList(0, 0) );
+                    char buf[256];
+                    sprintf(buf, "Projection%c.xml", boardLetter);
+                    cvSave( buf, &matrix, 0, 0, cvAttrList(0, 0) );
                     printf("project init %s\n", (projection && invProjection) ? "succeeded" : "failed");
                     break;
                 case PICK_SAMPLE_CORNERS:
@@ -980,7 +984,9 @@ void preserveValues(int id) {
         threshold
     };
     CvMat matrix = cvMat(sizeof(params)/sizeof(int),1,CV_32SC1,params);
-    cvSave( "Params.xml", &matrix, 0, 0, cvAttrList(0, 0) );
+    char buf[256];
+    sprintf(buf, "Params%c.xml", boardLetter);
+    cvSave( buf, &matrix, 0, 0, cvAttrList(0, 0) );
 }
 
 int initUI() {
@@ -1213,14 +1219,23 @@ int main(int argc, char** argv) {
         exit(-1);
     }
 
+    thisBoard = atoi(argv[1]); //use camera id as board number
+    boardLetter = argv[3][0]; //use camera id as board number
+    printf("This board: %i (%c)\n", thisBoard, boardLetter);
+    printf("To initialize coordinate projection, press <i>\n");
+
     projectionPoints[0] = cvPoint2D32f(0, 0);
     projectionPoints[1] = cvPoint2D32f(frameWidth, 0);
     projectionPoints[2] = cvPoint2D32f(frameWidth, frameHeight);
     projectionPoints[3] = cvPoint2D32f(0, frameHeight);
 
-	CvMat *excludePts = (CvMat*)cvLoad( "Exclusions.xml", 0, 0, 0);
-	CvMat *projPts = (CvMat*)cvLoad( "Projection.xml", 0, 0, 0);
-	CvMat *params = (CvMat*)cvLoad( "Params.xml", 0, 0, 0);
+    char buf[256];
+    sprintf(buf, "Exclusions%c.xml", boardLetter);
+	CvMat *excludePts = (CvMat*)cvLoad( buf, 0, 0, 0);
+    sprintf(buf, "Projection%c.xml", boardLetter);
+	CvMat *projPts = (CvMat*)cvLoad( buf, 0, 0, 0);
+    sprintf(buf, "Params%c.xml", boardLetter);
+	CvMat *params = (CvMat*)cvLoad( buf, 0, 0, 0);
     if (projPts) {
         for (int i=0; i<4; i++)
             projectionPoints[i] = CV_MAT_ELEM(*projPts, CvPoint2D32f, i, 0);
@@ -1244,7 +1259,7 @@ int main(int argc, char** argv) {
             for (int j=0; j<4; j++)
                 excludeCorners[i][j] = cvPoint2D32f(0,0);
     }
-    if (params && params->rows == 9 && params->rows == 1) {
+    if (params) {
         ball_threshold = CV_MAT_ELEM(*params, int, 0, 0);
         canny_threshold = CV_MAT_ELEM(*params, int, 1, 0);
         hough_votes = CV_MAT_ELEM(*params, int, 2, 0);
@@ -1264,13 +1279,11 @@ int main(int argc, char** argv) {
     if (initCV(argc>1 ? argv[1] : NULL)) return -1;
     if (initGame()) return -1;
 
-    thisBoard = atoi(argv[1]); //use camera id as board number
-    boardLetter = argv[3][0]; //use camera id as board number
-    printf("This board: %i (%c)\n", thisBoard, boardLetter);
-    printf("To initialize coordinate projection, press <i>\n");
-
-    IplImage *mask8 = 0, *mask = 0, *dev = 0, *grayscale = 0;
-    IplImage *out = 0, *sidebar = cvLoadImage("sidebar.png", CV_LOAD_IMAGE_COLOR);
+    IplImage *mask8 = 0, *mask = 0, *dev = 0, *grayscale = 0, *out = 0, *sidebar = 0;
+    {
+        sprintf(buf, "sidebar%c.png", boardLetter);
+        sidebar = cvLoadImage(buf, CV_LOAD_IMAGE_COLOR);
+    }
 
     warpDisplay = 1;
     projection_init(&projection, &invProjection, projectionPoints, bounds);
@@ -1406,7 +1419,6 @@ int main(int argc, char** argv) {
         cvResetImageROI( out );
 
         if (warpDisplay) {
-            char buf[256];
             CvSize textSize;
             int baseline;
 

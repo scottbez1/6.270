@@ -14,6 +14,8 @@ volatile int sendPositionPacket = 0;
 board_coord objects[NUM_OBJECTS];
 board_coord serialObjects[NUM_OBJECTS];
 
+char *teams[MAX_ROBOT_ID+1];
+
 pthread_mutex_t serial_lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t serial_condition = PTHREAD_COND_INITIALIZER;
 int sightings[MAX_ROBOT_ID+1];
@@ -890,8 +892,23 @@ void updateHUD(IplImage *out) {
             centeredFitTitleText(out, CV_RGB(255,255,255), 720, 200, buf);
         }
 
-        centeredFitTitleText(out, CV_RGB(255,255,255), 490, 200, "Princess BabyCakes");
-        centeredFitTitleText(out, CV_RGB(255,255,255), 585, 200, "Lily");
+        int id_a = 0, id_b = 0;
+        if (objects[0].id <= MAX_ROBOT_ID) {
+            if (objects[0].y > 0)
+                id_a = objects[0].id;
+            else
+                id_b = objects[0].id;
+        }
+        if (objects[1].id <= MAX_ROBOT_ID) {
+            if (objects[1].y > 0)
+                id_a = objects[1].id;
+            else
+                id_b = objects[1].id;
+        }
+        if (id_a)
+            centeredFitTitleText(out, CV_RGB(255,255,255), 490, 200, teams[id_a]);
+        if (id_b)
+            centeredFitTitleText(out, CV_RGB(255,255,255), 585, 200, teams[id_b]);
     }
 }
 
@@ -1346,6 +1363,21 @@ int main(int argc, char** argv) {
 
     for (int i=0; i<MAX_ROBOT_ID+1; i++)
         sightings[i] = 0;
+
+    for (int i=0; i<MAX_ROBOT_ID; i++) {
+        teams[i] = (char *)malloc(256);
+        sprintf(teams[i], "");
+    }
+    FILE *f = fopen("teams.tsv", "r");
+    while (!feof(f)) {
+        int i;
+        fscanf(f, "%d ", &i);
+        fgets(buf, 256, f);
+        if (buf[strlen(buf)-1] == '\n')
+            buf[strlen(buf)-1] = '\0';
+        strncpy(teams[i], buf, 256);
+    }
+    fclose(f);
 
     double lastPosUpdate = timeNow();
     double lastStartPacket = timeNow();

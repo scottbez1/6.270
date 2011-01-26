@@ -1,5 +1,6 @@
 #include "vision.h"
 #include "table.h"
+#include <strings.h>
 
 #define bool int
 
@@ -883,17 +884,19 @@ void processCircles( IplImage *img, IplImage *out, CvSeq *circles ) {
 }*/
 
 void sendStartStopCommand(int command, int id_a, int id_b) {
-    packet_buffer startPacket;
-    startPacket.type = command;
-    startPacket.payload.array[0] = id_a;
-    startPacket.payload.array[1] = id_b;
+    packet_buffer packet;
+    bzero(&packet, sizeof(packet));
+    packet.type = command;
+    packet.payload.array[0] = id_a;
+    packet.payload.array[1] = id_b;
 
-    serial_send_packet(&startPacket);
-    printf("%s!\n", command == START ? "start" : "stop");
+    serial_send_packet(&packet);
+    printf("%s: %i, %i\n", command == START ? "start" : "stop", id_a, id_b);
 }
 
 void sendPositions(board_coord objects[NUM_OBJECTS]) {
     packet_buffer pos;
+    bzero(&pos, sizeof(pos));
     for (int i = 0; i<8; i++){
         pos.type = POSITION;
         pos.board = thisBoard;

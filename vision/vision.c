@@ -874,6 +874,16 @@ void updateHUD(IplImage *out) {
         float s = MATCH_LEN_SECONDS - (now - matchStartTime);
         if (s < 0)
             s = 0;
+        if (s > MATCH_LEN_SECONDS-1) {
+            int state = s - MATCH_LEN_SECONDS + 1;
+            int red = (state >= 2)+1;
+            int yel = (state == 1)+1;
+            int grn = (state <= 0)+1;
+            cvCircle(out, cvPoint(384*8, 224*8), 65*8, CV_RGB(128*red,0,0), -1, CV_AA, 3);
+            cvCircle(out, cvPoint(384*8, 384*8), 65*8, CV_RGB(128*yel,128*yel,0), -1, CV_AA, 3);
+            cvCircle(out, cvPoint(384*8, 544*8), 65*8, CV_RGB(0,128*grn,0), -1, CV_AA, 3);
+            s = MATCH_LEN_SECONDS;
+        }
 
         if (s > 15)
             sprintf(buf, "%2d:%04.1fs", ((int)s)/60, fmod(s,60));
@@ -1139,6 +1149,7 @@ int initGame() {
 }
 
 CvMat *coviM = 0, *muM = 0;
+int hasStarted = 0;
 int handleKeypresses() {
     char c = cvWaitKey(5); // cvWaitKey takes care of event processing
     if( c == 27 )  //ESC
@@ -1147,12 +1158,9 @@ int handleKeypresses() {
         mouseOperation = PICK_PROJECTION_CORNERS;
         nextMousePoint = 0;
     } else if ( c == 'r' ) {
-        matchStartTime = timeNow(); //set the match start time
+        hasStarted = 0;
+        matchStartTime = timeNow()+2.0; //set the match start time
         matchState = MATCH_RUNNING;
-        pthread_mutex_lock(&serial_lock);
-        sendStartPacket = 10; //set flag for start packet to be sent
-        pthread_mutex_unlock(&serial_lock);
-        srand(randomGoalSeed); // reseed random
     } else if ( c == 's' ) {
         mouseOperation = PICK_SAMPLE_CORNERS;
         nextMousePoint = 0;
@@ -1187,6 +1195,12 @@ int handleKeypresses() {
 
 void updateGame() {
     double now = timeNow();
+    if (matchState == MATCH_RUNNING && (now - matchStartTime) >= 0 && !hasStarted) {
+        pthread_mutex_lock(&serial_lock);
+        sendStartPacket = 10; //set flag for start packet to be sent
+        pthread_mutex_unlock(&serial_lock);
+        hasStarted = 1;
+    }
     if ((now - matchStartTime) >= MATCH_LEN_SECONDS && matchState != MATCH_ENDED) {
         matchState = MATCH_ENDED;
         pthread_mutex_lock(&serial_lock);

@@ -4,28 +4,28 @@ version=1.1.3
 #control[num]:id:type=val
 # 1-BOOLEAN CONTROLS
 # White Balance Temperature, Auto +
-control[3]:0x98090c:2=1
+control[3]:0x98090c:2=0
 # Exposure, Auto Priority +
 control[11]:0x9a0903:2=0
 # 2-MENU CONTROLS
 # Power Line Frequency +
-control[5]:0x980918:3=0
+control[5]:0x980918:3=2
 # Exposure, Auto +
 control[9]:0x9a0901:3=1
 # 3-INTEGER CONTROLS
 # Brightness +
-control[0]:0x980900:1=144
+control[0]:0x980900:1=194
 # Contrast +
-control[1]:0x980901:1=53
+control[1]:0x980901:1=56
 # Saturation +
-control[2]:0x980902:1=79
+control[2]:0x980902:1=29
 # Gain +
-control[4]:0x980913:1=255
+control[4]:0x980913:1=40
 # White Balance Temperature +
-control[6]:0x98091a:1=0
+control[6]:0x98091a:1=230
 # Sharpness +
-control[7]:0x98091b:1=205
+control[7]:0x98091b:1=191
 # Backlight Compensation +
 control[8]:0x98091c:1=1
 # Exposure (Absolute) +
-control[10]:0x9a0902:1=1471
+control[10]:0x9a0902:1=760

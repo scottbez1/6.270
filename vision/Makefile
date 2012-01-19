@@ -4,8 +4,8 @@ RM = rm
 MAKE = make
 CFLAGS = -std=c99 $(DEBUG)
 CXXFLAGS = $(DEBUG)
-HEADERS = vision.h projection.h serial.h util.h game.h packet.h table.h
-VISION_SOURCES = projection.c serial.c vision.c util.c table.c
+HEADERS = vision.h projection.h serial.h util.h game.h packet.h table.h goals.h
+VISION_SOURCES = projection.c serial.c goals.c vision.c util.c table.c
 VISION_OBJS = $(VISION_SOURCES:.c=.o)
 CALIBRATE_OBJS = calibrate.o
 CIRCLEDETECT_OBJS = circledetect.o

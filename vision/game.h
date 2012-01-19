@@ -13,7 +13,7 @@
 #define Y_MIN -2048
 #define Y_MAX 2048
 
-#define FOOT 512.0
+#define FOOT 682.66
 
 #define GOAL_TOLERANCE (FOOT/6.)
 

@@ -2,8 +2,8 @@
 #include "table.h"
 #include <strings.h>
 #include <stdlib.h>
-
-#define bool int
+#include <stdbool.h>
+#include "goals.h"
 
 double matchStartTime;
 int matchState = MATCH_ENDED;
@@ -51,7 +51,7 @@ const char *mouseCornerLabel[] = {"TOP LEFT", "TOP RIGHT", "BOTTOM RIGHT", "BOTT
 const char *mouseOperationLabel[] = {"Init Projection", "Sample Colors", "Exclude Quad"};
 
 int threshold = 100;
-int randomGoalSeed = 1337;
+int randomGoalSeed = 18022;
 int side_tolerance = 50;
 int min_area = 800; // ~ square of (fraction of frame width in 1/1000s)
 int max_area = 5800; // will be corrected for resolution
@@ -853,6 +853,14 @@ void centeredFitTitleText(IplImage *out, CvScalar color, float y, float w, char 
     cvPutText(out, buf, cvPoint((displayHeight+displayWidth-textSize.width)/2.0, y+textSize.height/2.0), &titleFonts[i], color);
 }
 
+void drawGoalInfo(IplImage *out) {
+    CvPoint goal = getGoal();
+    CvPoint2D32f display_goal = project(displayMatrix, cvPoint2D32f(goal.x,goal.y));
+    cvCircle(out, cvPoint(display_goal.x, display_goal.y), 10, CV_RGB(0,0,255), 5, CV_AA,0);
+    
+    cvPrintf(out, &titleFonts[1], cvPoint(800, 350), CV_RGB(255,255,255), "Score: %d", getScore());
+}
+
 void updateHUD(IplImage *out) {
     static double last_frame = 0.0;
     static float last_fps = 0.0;
@@ -885,6 +893,13 @@ void updateHUD(IplImage *out) {
         char buf[256];
         sprintf(buf, "Remaining Time:", fps);
         centeredFitTitleText(out, CV_RGB(255,255,255), 640, 200, buf);
+                    
+
+      
+
+        drawGoalInfo(out);
+            
+
 
         float s = MATCH_LEN_SECONDS - (now - matchStartTime);
         if (s < 0)
@@ -1002,7 +1017,7 @@ void sendStartStopCommand(int command, int id_a, int id_b) {
 void sendPositions(board_coord objects[NUM_OBJECTS]) {
     packet_buffer pos;
     bzero(&pos, sizeof(pos));
-    for (int i = 0; i<8; i++){
+    for (int i = 0; i<1; i++){
         pos.type = POSITION;
         pos.board = thisBoard;
         pos.seq_no = i;
@@ -1177,11 +1192,19 @@ int handleKeypresses() {
         hasStarted = 0;
         matchStartTime = timeNow()+2.0; //set the match start time
         matchState = MATCH_RUNNING;
+        resetRound(randomGoalSeed);
     } else if ( c == 'R' ) {
         matchStartTime = timeNow()-MATCH_LEN_SECONDS;
         pthread_mutex_lock(&serial_lock);
         sendStartPacket = 0;
         sendStopPacket = 0;
+        matchState = MATCH_ENDED;
+        pthread_mutex_unlock(&serial_lock);
+    } else if ( c == '!' ) {
+        matchStartTime = timeNow()-MATCH_LEN_SECONDS;
+        pthread_mutex_lock(&serial_lock);
+        sendStartPacket = 0;
+        sendStopPacket = 10;
         matchState = MATCH_ENDED;
         pthread_mutex_unlock(&serial_lock);
     } else if ( c == 's' ) {
@@ -1232,7 +1255,10 @@ void updateGame() {
         sendStopPacket = 10;
         pthread_mutex_unlock(&serial_lock);
     } else {
-        //checkGoals();
+        if (matchState == MATCH_RUNNING) {
+            checkGoals(objects[0].x, objects[0].y);
+            checkGoals(objects[1].x, objects[1].y);
+        }
     }
 }
 
@@ -1493,7 +1519,12 @@ int main(int argc, char** argv) {
                 cvPolyLine(out, &p, &count, 1, 1, CV_RGB(255,0,0), 2, CV_AA, 0);
         }
 
-        processBalls(img, grayscale, out);
+        //processBalls(img, grayscale, out);
+
+        // Force objects[2] to hold the goal
+        CvPoint goal_pt = getGoal();
+        objects[2].x = goal_pt.x;
+        objects[2].y = goal_pt.y;
 
 /*
         float radius_coords = FOOT * 1.68 * .5 / 12.; // golf ball
@@ -1530,14 +1561,14 @@ int main(int argc, char** argv) {
         }
 
         double now = timeNow();
-        if (now - lastStartPacket > 5.0 && matchState == MATCH_RUNNING) {
+        if (now - lastStartPacket > 5.0 && (now - matchStartTime > 3) && matchState == MATCH_RUNNING) {
             pthread_mutex_lock( &serial_lock);
             sendStartPacket++;
             pthread_mutex_unlock( &serial_lock);
 
             lastStartPacket = now;
         }
-        if (now - lastPosUpdate > 1.0 || matchState == MATCH_RUNNING) {
+        if (now - lastPosUpdate > 1.0 || matchState == MATCH_RUNNING || 1) {
             pthread_mutex_lock( &serial_lock);
             memcpy(serialObjects, objects, sizeof(serialObjects));
             sendPositionPacket = 1;

@@ -22,7 +22,9 @@ pthread_cond_t serial_condition = PTHREAD_COND_INITIALIZER;
 int sightings[MAX_ROBOT_ID+1];
 board_coord robots[MAX_ROBOT_ID+1];
 
-float bounds[4] = {X_MIN, X_MAX, Y_MIN, Y_MAX};
+// For a square playing field, these would be X_MIN, X_MAX, etc,
+// but since this is hexagonal, we use different (interior) points
+float bounds[4] = {-1024, 1024, -1773, 1773};
 
 #define SHOW_FILTERED_OUTPUT 1
 
@@ -83,6 +85,10 @@ void music_fade() {
 
 int cvPrintf(IplImage *img, CvFont *font, CvPoint pt, CvScalar color, const char *format, ...);
 
+// For projections: 
+// Frame is the video frame from the camera (i.e. 640x480 coords)
+// Physical is the robot coordinates (i.e. 4096x4096)
+// Display is the display coordinates
 CvMat *projection = 0; // maps from frame coords to physical coords
 CvMat *displayMatrix = 0; // maps from physical coords to display coords
 CvMat *invProjection = 0; // maps from physical coords to frame coords
@@ -107,7 +113,7 @@ void computeDisplayMatrix() {
 
         CvPoint2D32f src[4] = {cvPoint2D32f(X_MIN,Y_MAX),cvPoint2D32f(X_MAX,Y_MAX),cvPoint2D32f(X_MAX,Y_MIN),cvPoint2D32f(X_MIN,Y_MIN)};
         //CvPoint2D32f dst[4] = {cvPoint2D32f(0,0),cvPoint2D32f(frameHeight,0),cvPoint2D32f(frameHeight,frameHeight),cvPoint2D32f(0,frameHeight)};
-        CvPoint2D32f dst[4] = {cvPoint2D32f(displayHeight,0),cvPoint2D32f(displayHeight,displayHeight),cvPoint2D32f(0,displayHeight),cvPoint2D32f(0,0)};
+        CvPoint2D32f dst[4] = {cvPoint2D32f(0,0),cvPoint2D32f(displayHeight,0),cvPoint2D32f(displayHeight,displayHeight),cvPoint2D32f(0,displayHeight)};
 
         cvGetPerspectiveTransform(src, dst, M);
 

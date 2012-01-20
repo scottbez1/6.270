@@ -3,8 +3,6 @@
 #include <assert.h>
 #include "projection.h"
 
-//See http://stackoverflow.com/questions/169902/projective-transformation/2551747#2551747
-
 // points are given in the order
 // top left, top right, bottom right, bottom left
 // bounds are given in the order

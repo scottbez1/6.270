@@ -9,23 +9,23 @@ control[3]:0x98090c:2=0
 control[11]:0x9a0903:2=0
 # 2-MENU CONTROLS
 # Power Line Frequency +
-control[5]:0x980918:3=2
+control[5]:0x980918:3=0
 # Exposure, Auto +
 control[9]:0x9a0901:3=1
 # 3-INTEGER CONTROLS
 # Brightness +
-control[0]:0x980900:1=226
+control[0]:0x980900:1=207
 # Contrast +
-control[1]:0x980901:1=197
+control[1]:0x980901:1=195
 # Saturation +
-control[2]:0x980902:1=56
+control[2]:0x980902:1=0
 # Gain +
-control[4]:0x980913:1=56
+control[4]:0x980913:1=24
 # White Balance Temperature +
-control[6]:0x98091a:1=230
+control[6]:0x98091a:1=7911
 # Sharpness +
-control[7]:0x98091b:1=215
+control[7]:0x98091b:1=189
 # Backlight Compensation +
 control[8]:0x98091c:1=0
 # Exposure (Absolute) +
-control[10]:0x9a0902:1=466
+control[10]:0x9a0902:1=3165

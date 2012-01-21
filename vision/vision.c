@@ -31,6 +31,7 @@ float bounds[4] = {-1024, 1024, -1773, 1773};
 const char *WND_MAIN = "6.270 Vision System";
 const char *WND_FILTERED = "Filtered Video";
 const char *WND_CONTROLS = "Controls";
+const char *WND_FILTERED_SQUARES = "Square Detection";
 const char *TRK_THRESHOLD = "Threshold";
 const char *TRK_TOLERANCE = "Side length tolerance";
 const char *TRK_MIN_AREA = "Min square area";
@@ -95,6 +96,8 @@ CvMat *invProjection = 0; // maps from physical coords to frame coords
 
 int warpDisplay = 0, showFPS = 0;
 int showPhotoFinish = 0;
+
+bool showFilteredSquares = 0;
 
 CvPoint2D32f projectionPoints[4];
 CvPoint2D32f sampleCorners[4];
@@ -412,7 +415,11 @@ CvSeq *findCandidateSquares(IplImage *tgray) {
     CvSeq *squares = cvCreateSeq( 0, sizeof(CvSeq), sizeof(CvPoint), storage );
 
     cvThreshold( tgray, gray, threshold, 255, CV_THRESH_BINARY );
+    //cvAdaptiveThreshold(tgray, gray, 255, CV_ADAPTIVE_THRESH_GAUSSIAN_C, CV_THRESH_BINARY, 13, threshold);
 
+    if (showFilteredSquares) {
+        cvShowImage(WND_FILTERED_SQUARES, gray);
+    }
 
     // find contours and store them all as a list
     cvFindContours( gray, storage, &contours, sizeof(CvContour),
@@ -1106,6 +1113,9 @@ int initUI() {
     w=1.0;cvInitFont(&titleFonts[1], CV_FONT_HERSHEY_DUPLEX, w, w, 0, 1, CV_AA);
     w=.8;cvInitFont(&titleFonts[2], CV_FONT_HERSHEY_DUPLEX, w, w, 0, 1, CV_AA);
     w=.6;cvInitFont(&titleFonts[3], CV_FONT_HERSHEY_DUPLEX, w, w, 0, 1, CV_AA);
+
+    //cvStartWindowThread();
+
     cvNamedWindow( WND_MAIN, 1 );
     cvResizeWindow( WND_MAIN, displayWidth, displayHeight);
     cvNamedWindow( WND_CONTROLS, 1);
@@ -1243,6 +1253,14 @@ int handleKeypresses() {
         showFPS = !showFPS;
     } else if ( c == 'z' ) {
         showPhotoFinish = !showPhotoFinish;
+    } else if ( c == ' ' ) {
+        showFilteredSquares = !showFilteredSquares;
+        if (showFilteredSquares) {
+            cvNamedWindow( WND_FILTERED_SQUARES, 0);
+            cvResizeWindow( WND_FILTERED_SQUARES, frameWidth, frameHeight);
+        } else {
+            cvDestroyWindow( WND_FILTERED_SQUARES);
+        }
     }
     return 0;
 }

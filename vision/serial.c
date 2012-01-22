@@ -7,18 +7,19 @@
 
 #define BAUD B19200
 
-int fd;
 
 int serial_open(const char *device){
+    int fd;
+    
     fd = open(device, O_RDWR | O_NOCTTY);
     if(fd == -1) {
-        printf( "failed to open port\n" );
-        return 0;
+        printf( "failed to open port %s\n", device );
+        return -1;
     }
 
     struct termios  config;
-    if(!isatty(fd)) { printf("error: not a tty!"); return 0;}
-    if(tcgetattr(fd, &config) < 0) { printf("error: couldn't get attr"); return 0;}
+    if(!isatty(fd)) { printf("error: not a tty!"); return -1;}
+    if(tcgetattr(fd, &config) < 0) { printf("error: couldn't get attr"); return -1;}
     //
     // Input flags - Turn off input processing
     // convert break to null byte, no CR to NL translation,
@@ -26,8 +27,9 @@ int serial_open(const char *device){
     // no input parity check, don't strip high bit off,
     // no XON/XOFF software flow control
     //
-    config.c_iflag &= ~(IGNBRK | BRKINT | ICRNL |
-                        INLCR | PARMRK | INPCK | ISTRIP | IXON);
+    //config.c_iflag &= ~(IGNBRK | BRKINT | ICRNL |
+    //                    INLCR | PARMRK | INPCK | ISTRIP | IXON);
+    config.c_iflag = 0;
     //
     // Output flags - Turn off output processing
     // no CR to NL translation, no NL to CR-NL translation,
@@ -63,20 +65,20 @@ int serial_open(const char *device){
     //
     if(cfsetispeed(&config, BAUD) < 0 || cfsetospeed(&config, BAUD) < 0) {
          printf("error: couldn't set baud!\n");
-         return 0;
+         return -1;
     }
     //
     // Finally, apply the configuration
     //
-    if(tcsetattr(fd, TCSAFLUSH, &config) < 0) { printf("error: couldn't set serial attrs\n"); }
+    if(tcsetattr(fd, TCSAFLUSH, &config) < 0) { printf("error: couldn't set serial attrs\n"); return -1; }
 
     printf("Serial opened!\n");
     fflush(stdout);
     //write(fd,"A",1);
-    return 1;
+    return fd;
 }
 
-void serial_sync(){
+void serial_sync(int fd){
     const int length=32;
     const int sync_byte=0;
     uint8_t sync[length];
@@ -85,13 +87,13 @@ void serial_sync(){
     write(fd, sync, length);
 }
 
-void serial_send_packet(packet_buffer* packet){
+void serial_send_packet(int fd, packet_buffer* packet){
     uint8_t len = sizeof(packet_buffer);
     write(fd, &len, 1);
     write(fd, packet, len);
     usleep(40000);
 }
 
-void serial_close(){
+void serial_close(int fd){
     close(fd);
 }

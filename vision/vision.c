@@ -12,10 +12,11 @@ volatile int sendStopPacket = 0;
 volatile int sendPositionPacket = 0;
 
 #define NUM_OBJECTS 32
-board_coord objects[NUM_OBJECTS];
-board_coord serialObjects[NUM_OBJECTS];
+game_data gameData;
+game_data serialGameData;
 
 char *teams[MAX_ROBOT_ID+1];
+int scores[MAX_ROBOT_ID+1];
 
 pthread_mutex_t serial_lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t serial_condition = PTHREAD_COND_INITIALIZER;
@@ -70,6 +71,9 @@ CvMemStorage *storage;
 CvCapture *capture;
 float frameWidth, frameHeight;
 const float displayWidth = 1024, displayHeight = 768;
+
+int fd_tx; // file descriptor of TX happyboard serial
+int fd_pf; // file descriptor of playing field happyboard serial
 
 void music() {
     system("/home/sixtwoseventy/music-ctl.py &");
@@ -214,190 +218,6 @@ int compareDists(const void *a, const void *b){
         return 0;
     else 
         return 1;
-}
-
-//push currentObjects into previousObjects by matching balls to try and maintain
-//proper ordering
-void matchObjects(board_coord previousObjects[NUM_OBJECTS], board_coord currentObjects[NUM_OBJECTS]){
-
-    obj_dist distances[(NUM_OBJECTS-2)*(NUM_OBJECTS-2)];
-
-    int i = 0;
-    for (int prevIdx = 2; prevIdx < NUM_OBJECTS; prevIdx++) { //don't match index 0 or 1 - these are always robots
-        for (int curIdx = 2; curIdx < NUM_OBJECTS; curIdx++){
-           obj_dist d;
-           d.prevIdx = prevIdx;
-           d.curIdx = curIdx;
-           d.distance = getObjectDistance(previousObjects[prevIdx], currentObjects[curIdx]);
-           distances[i] = d;
-           i++;
-        }
-    }
-
-    //clear previousObjects
-    for (int j = 2; j < NUM_OBJECTS; j++){
-        previousObjects[j].id = 0;
-        previousObjects[j].x = 0;
-        previousObjects[j].y = 0;
-        previousObjects[j].radius = 0;
-        previousObjects[j].hue = 0;
-        previousObjects[j].saturation = 0;
-    }
-
-    qsort(distances, (NUM_OBJECTS-2)*(NUM_OBJECTS-2), sizeof(obj_dist), &compareDists);
-
-    bool curObjectPlaced[NUM_OBJECTS]; //flags for if an object has been placed 
-    bool prevObjectUsed[NUM_OBJECTS]; //flags for if an object has been placed 
-    for (int j = 0; j < NUM_OBJECTS; j++){
-        curObjectPlaced[j] = 0;
-        prevObjectUsed[j] = 0;
-    }
-
-
-    //loop through sorted obj_dist's and match lowest distance first
-    for (int j = 0; j < (NUM_OBJECTS-2)*(NUM_OBJECTS-2); j++){
-        if (!curObjectPlaced[distances[j].curIdx] &&
-            !prevObjectUsed[distances[j].prevIdx]){
-
-            //printf("placing curobject %i into objects[%i]; dist=%.2f\n", distances[j].curIdx, distances[j].prevIdx, distances[j].distance);
-            //place curObject into prevObjects array
-            previousObjects[distances[j].prevIdx] = currentObjects[distances[j].curIdx];
-
-            curObjectPlaced[distances[j].curIdx] = 1;
-            prevObjectUsed[distances[j].prevIdx] = 1;
-        }
-    }
-}
-
-void processBalls(IplImage *img, IplImage *gray, IplImage *out){
-    CvSeq *contours;
-
-    cvSmooth(gray, gray, CV_GAUSSIAN, 5, 5, 0, 0);
-    cvThreshold( gray, gray, ball_threshold, 255, CV_THRESH_BINARY );
-#if SHOW_FILTERED_OUTPUT
-    cvShowImage( WND_FILTERED, gray );
-#endif
-
-    // find contours and store them all as a list
-    cvFindContours( gray, storage, &contours, sizeof(CvContour),
-        CV_RETR_LIST, CV_CHAIN_APPROX_SIMPLE, cvPoint(0,0) );
-
-
-    int curObject = 2;
-
-
-    board_coord tempObjects[NUM_OBJECTS];
-
-    // test each contour
-    while( contours ) {
-
-        CvRect boundRect = cvBoundingRect(contours, 0);
-
-        // take the next contour
-        contours = contours->h_next;
-
-        if (boundRect.width >= min_ball_dim &&
-            boundRect.width <= max_ball_dim &&
-            boundRect.height>= min_ball_dim &&
-            boundRect.height<= max_ball_dim){
-    
-            int lesserDim, greaterDim;
-
-            if (boundRect.width>boundRect.height){
-                lesserDim = boundRect.height;
-                greaterDim = boundRect.width;
-            } else {
-                lesserDim = boundRect.width;
-                greaterDim = boundRect.height;
-            }
-
-            //check to make sure the boundRect is relatively square
-            if (lesserDim < 0.6 * greaterDim)
-                continue;
-
-            CvPoint2D32f center = project(projection, cvPoint2D32f(boundRect.x + boundRect.width/2,boundRect.y+boundRect.height/2));
-
-            //check if the contour is within the playing field
-            if (center.x >= X_MIN &&
-                center.x <= X_MAX &&
-                center.y >= Y_MIN &&
-                center.y <= Y_MAX){
-
-                int x1 = boundRect.x;
-                int y1 = boundRect.y;
-                int x2 = boundRect.x + boundRect.width;
-                int y2 = boundRect.y + boundRect.height;
-
-                int goodPoints = 0;
-                goodPoints += get_5pixel_avg(gray,x1,y1) < 0.1;
-                goodPoints += get_5pixel_avg(gray,x2,y1) < 0.1;
-                goodPoints += get_5pixel_avg(gray,x1,y2) < 0.1;
-                goodPoints += get_5pixel_avg(gray,x2,y2) < 0.1;
-                goodPoints += get_5pixel_avg(gray,(x1+x2)/2,(y1+y2)/2) > 0.9;
-
-                goodPoints += get_5pixel_avg(gray,(x1+x2)/2,(y1*1 + y2*3)/4) > 0.9;
-                goodPoints += get_5pixel_avg(gray,(x1+x2)/2,(y1*3 + y2*1)/4) > 0.9;
-                goodPoints += get_5pixel_avg(gray,(x1*1+x2*3)/4,(y1 + y2)/2) > 0.9;
-                goodPoints += get_5pixel_avg(gray,(x1*3+x2*1)/4,(y1 + y2)/2) > 0.9;
-
-                if (goodPoints >= 7){
-                    CvPoint2D32f display_pt = project(displayMatrix, center);
-                    CvScalar color = CV_RGB(0,255,255);
-                    int thickness = 2;
-                    if (curObject < NUM_OBJECTS){
-                        float x = boundRect.x + boundRect.width/2;
-                        float y = boundRect.y + boundRect.height/2;
-
-                        IplImage *tempBGR = cvCreateImage( cvSize(1,1), 8, 3 );
-                        IplImage *tempHSV = cvCreateImage( cvSize(1,1), 8, 3 );
-
-                        cvSet2D(tempBGR, 0,0, cvGet2D(img,y,x));
-                        cvCvtColor(tempBGR, tempHSV, CV_BGR2HSV);
-                        CvScalar pixelHSV = cvGet2D(tempHSV,0,0);
-
-                        cvReleaseImage(&tempBGR);
-                        cvReleaseImage(&tempHSV);
-
-                        tempObjects[curObject].id = 0xFF;
-                        tempObjects[curObject].x = center.x;
-                        tempObjects[curObject].y = center.y;
-                        tempObjects[curObject].radius = clamp(((float)boundRect.width-min_ball_dim)/(max_ball_dim-min_ball_dim)*16.0, 0, 15);
-                        tempObjects[curObject].hue = (int)(pixelHSV.val[0] * 16.0 / 180.0 + 0.5) % 16;
-                        tempObjects[curObject].saturation = pixelHSV.val[1] * 16.0 / 256.0;
-                        curObject++;
-                    } else {
-                        color = CV_RGB(255,0,0);
-                        thickness = 4;
-                    }
-                    cvCircle(out, cvPoint(display_pt.x, display_pt.y), 10, color, thickness, CV_AA,0);
-                }
-            }
-        }
-    }
-
-    //zero all other objects
-    for (; curObject < NUM_OBJECTS; curObject++){
-        tempObjects[curObject].id = 0xAA;
-    }
-
-    matchObjects(objects, tempObjects);
-
-    if (!warpDisplay) {
-        for (int i = 2; i<NUM_OBJECTS; i++) {
-            if (objects[i].id != 0xFF) {
-                continue;
-            }
-            CvPoint2D32f p = project(displayMatrix, cvPoint2D32f(objects[i].x,objects[i].y));
-
-            char buf[256];
-            sprintf(buf, "%d", i);
-            CvSize textSize;
-            int baseline;
-            cvGetTextSize(buf, &font, &textSize, &baseline);
-            cvPutText(out, buf, cvPoint(p.x-textSize.width/2.0, p.y+textSize.height+10+5), &font, CV_RGB(0,255,255));
-        }
-    }
-
 }
 
 
@@ -846,6 +666,7 @@ void processRobotDetection(CvPoint2D32f trueCenter, float theta, int id, CvPoint
     robots[id].x = x;
     robots[id].y = y;
     robots[id].theta = t; //change theta from +/- PI to +/-2048 (signed 12 bit int)
+    robots[id].score = scores[id];
 
     if (0)
         printf("X: %04i, Y: %04i, theta: %04i, theta_act: %f, proj_x:%f, proj_y:%f \n", x, y, t, theta, orientationHandle->x, orientationHandle->y);
@@ -947,21 +768,21 @@ void updateHUD(IplImage *out) {
         }
 
         int id_a = 0, id_b = 0;
-        if (objects[0].id <= MAX_ROBOT_ID) {
-            if (objects[0].y > 0)
-                id_a = objects[0].id;
+        if (gameData.coords[0].id <= MAX_ROBOT_ID) {
+            if (gameData.coords[0].y > 0)
+                id_a = gameData.coords[0].id;
             else
-                id_b = objects[0].id;
+                id_b = gameData.coords[0].id;
         }
-        if (objects[1].id <= MAX_ROBOT_ID) {
-            if (objects[1].y > 0)
-                id_a = objects[1].id;
+        if (gameData.coords[1].id <= MAX_ROBOT_ID) {
+            if (gameData.coords[1].y > 0)
+                id_a = gameData.coords[1].id;
             else
-                id_b = objects[1].id;
+                id_b = gameData.coords[1].id;
         }
-        if (id_a)
+        if (id_a <= MAX_ROBOT_ID)
             centeredFitTitleText(out, CV_RGB(255,255,255), 490, 200, teams[id_a]);
-        if (id_b)
+        if (id_b <= MAX_ROBOT_ID)
             centeredFitTitleText(out, CV_RGB(255,255,255), 585, 200, teams[id_b]);
     }
 }
@@ -996,26 +817,6 @@ void processSquares( IplImage *img, IplImage *out, IplImage *grayscale, CvSeq *s
     }
 }
 
-typedef struct {
-    float x, y, r;
-} circle_t;
-
-/*
-void processCircles( IplImage *img, IplImage *out, CvSeq *circles ) {
-    CvSeqReader reader;
-
-    circle_t *circle;
-
-    // initialize reader of the sequence
-    cvStartReadSeq( circles, &reader, 0 );
-    // read 4 sequence elements at a time (all vertices of a square)
-    for(int i=0; i<circles->total; i++) {
-        circle = (circle_t *)cvGetSeqElem(circles, i);
-        cvCircle(out, cvPoint(circle->x*8, circle->y*8), circle->r*8, CV_RGB(255,255,0), 2, 8, 3);
-        printf("Circle %.0f, %.0f, %.0f\n", circle->x, circle->y, circle->r);
-    }
-}*/
-
 void sendStartStopCommand(int command, int id_a, int id_b) {
     packet_buffer packet;
     bzero(&packet, sizeof(packet));
@@ -1023,26 +824,26 @@ void sendStartStopCommand(int command, int id_a, int id_b) {
     packet.payload.array[0] = id_a;
     packet.payload.array[1] = id_b;
 
-    serial_send_packet(&packet);
+    serial_send_packet(fd_tx, &packet);
     printf("%s: %i, %i\n", command == START ? "start" : "stop", id_a, id_b);
 }
 
-void sendPositions(board_coord objects[NUM_OBJECTS]) {
+void sendPositions(game_data gdata) {
     packet_buffer pos;
     bzero(&pos, sizeof(pos));
-    for (int i = 0; i<1; i++){
-        pos.type = POSITION;
-        pos.board = thisBoard;
-        pos.seq_no = i;
-        memcpy(&pos.payload, &objects[4*i], sizeof(board_coord)*4);
-        serial_send_packet(&pos);
-    }
+    
+    pos.type = POSITION;
+    pos.board = thisBoard;
+    pos.seq_no = 0;
+    memcpy(&pos.payload, &gdata, sizeof(game_data));
+    serial_send_packet(fd_tx, &pos);
 }
 
 void *runSerial(void *params){
     while(1) {
         int sendPos, sendStart, sendStop;
-        board_coord localObjects[NUM_OBJECTS];
+        game_data localGameData;
+
         pthread_mutex_lock( &serial_lock );
         pthread_cond_wait( &serial_condition, &serial_lock );
         sendPos = sendPositionPacket;
@@ -1054,34 +855,108 @@ void *runSerial(void *params){
         if (sendStopPacket)
             sendStopPacket--;
         if (sendPos)
-            memcpy(localObjects, serialObjects, sizeof(localObjects));
+            memcpy(&localGameData, &serialGameData, sizeof(game_data));
         pthread_mutex_unlock(&serial_lock);
 
         if (sendPos)
-            sendPositions(localObjects);
+            sendPositions(localGameData);
 
         if (sendStart)
-            sendStartStopCommand(START, localObjects[0].id, localObjects[1].id);
+            sendStartStopCommand(START, localGameData.coords[0].id, localGameData.coords[1].id);
 
         if (sendStop)
-            sendStartStopCommand(STOP, localObjects[0].id, localObjects[1].id);
+            sendStartStopCommand(STOP, localGameData.coords[0].id, localGameData.coords[1].id);
     }
 }
 
-int initSerial(const char *device) {
-    if (!serial_open(device))
-        fprintf(stderr, "Could not open serial port!\n");
-    serial_sync();
+void *runPlayingFieldSerial(void *params) {
+    // Get a FILE* from the fd (TODO: switch to use fopen in serial.c?)
+    FILE * file = fdopen(fd_pf, "r");
+    while (1) {
+        char strbuf[100];
+        if ( fgets (strbuf , 100 , file) != NULL ) {
+            //printf("Got %d chars\n", strlen(strbuf));
+            //puts(strbuf);
+            //continue;
+            int teamA;
+            int teamB;
+            int scoreA;
+            int scoreB;
+            int owners[6];
+            int balls_remaining[6];
+            /*
+            strbuf[0] = 'D';
+            strbuf[1] = 'A';
+            strbuf[2] = 'T';
+            strbuf[3] = 'A';
+            strbuf[4] = ':';
+            strbuf[5] = '5';
+            strbuf[6] = '5';
+            */
+            int val = sscanf(strbuf, 
+                             "DATA:%u,%u;%u,%u;%d,%d,%d,%d,%d,%d,;%u,%u,%u,%u,%u,%u,",
+                             &teamA,
+                             &teamB,
+                             &scoreA,
+                             &scoreB,
+                             &owners[0],
+                             &owners[1],
+                             &owners[2],
+                             &owners[3],
+                             &owners[4],
+                             &owners[5],
+                             &balls_remaining[0],
+                             &balls_remaining[1],
+                             &balls_remaining[2],
+                             &balls_remaining[3],
+                             &balls_remaining[4],
+                             &balls_remaining[5]
+                             );
+                printf("GOT: %s", strbuf);
+            if (val > 0) {
+                printf("Teams: %d, %d\n", teamA, teamB);
+                if (teamA <= MAX_ROBOT_ID) {
+                    scores[teamA] = scoreA;
+                }
+                if (teamB <= MAX_ROBOT_ID) {
+                    scores[teamB] = scoreB;
+                }
+                
+                for (int i = 0; i < 6; i++) {
+                    gameData.territories[i].owner = owners[i];
+                    gameData.territories[i].remaining = balls_remaining[i];
+                }
+            } else {
+            }
+
+        }
+    }
+}
+
+int initSerial(const char *device, const char *playing_field_device) {
+    if ((fd_tx = serial_open(device)) < 0)
+        fprintf(stderr, "Could not open TX serial port!\n");
+    serial_sync(fd_tx);
 
     //start the serial comm thread
     pthread_t serialThread;
     pthread_create( &serialThread, NULL, &runSerial, NULL);
 
+
+    if ((fd_pf = serial_open(playing_field_device)) < 0) {
+        fprintf(stderr, "Could not open playing field serial port!\n");
+    } else {
+        //start the serial comm thread
+        pthread_t serialPlayingFieldThread;
+        pthread_create( &serialPlayingFieldThread, NULL, &runPlayingFieldSerial, NULL);
+    }
+
     return 0;
 }
 
 void cleanupSerial() {
-    serial_close();
+    serial_close(fd_tx);
+    serial_close(fd_pf);
 }
 
 void preserveValues(int id) {
@@ -1093,8 +968,8 @@ void preserveValues(int id) {
         max_ball_dim,
         min_area,
         min_ball_dim,
-        objects[0].id,
-        objects[1].id,
+        gameData.coords[0].id,
+        gameData.coords[1].id,
         randomGoalSeed,
         side_tolerance,
         threshold
@@ -1208,6 +1083,11 @@ int handleKeypresses() {
         hasStarted = 0;
         matchStartTime = timeNow()+2.0; //set the match start time
         matchState = MATCH_RUNNING;
+        for (int i = 0; i < 6; i++) {
+            gameData.territories[i].owner = 0;
+            gameData.territories[i].remaining = 10;
+            gameData.territories[i].rate_limit = 0;
+        }
         resetRound(randomGoalSeed);
     } else if ( c == 'R' ) {
         matchStartTime = timeNow()-MATCH_LEN_SECONDS;
@@ -1278,11 +1158,6 @@ void updateGame() {
         pthread_mutex_lock(&serial_lock);
         sendStopPacket = 10;
         pthread_mutex_unlock(&serial_lock);
-    } else {
-        if (matchState == MATCH_RUNNING) {
-            checkGoals(objects[0].x, objects[0].y);
-            checkGoals(objects[1].x, objects[1].y);
-        }
     }
 }
 
@@ -1372,7 +1247,7 @@ void sampleColorModel(IplImage *img) {
 }
 
 int main(int argc, char** argv) {
-    if (argc != 4){
+    if (argc != 5){
         fprintf(stderr,"Need 3 arguments: [camera number] [serial port] [table letter]\n");
         exit(-1);
     }
@@ -1432,7 +1307,7 @@ int main(int argc, char** argv) {
     cvReleaseMat(&projPts);
     cvReleaseMat(&params);
 
-    if (initSerial(argc>2 ? argv[2] : NULL)) return -1;
+    if (initSerial(argc>2 ? argv[2] : NULL, argc>4 ? argv[4] : NULL)) return -1;
     if (initUI()) return -1;
     if (initCV(argc>1 ? argv[1] : NULL)) return -1;
     if (initGame()) return -1;
@@ -1530,8 +1405,8 @@ int main(int argc, char** argv) {
                 id_b = i;
             }
         }
-        objects[0] = robots[id_a];
-        objects[1] = robots[id_b];
+        gameData.coords[0] = robots[id_a];
+        gameData.coords[1] = robots[id_b];
 
         for (int i=0; i<nextExclude; i++) {
             CvPoint pt[4], *p = pt;
@@ -1542,32 +1417,6 @@ int main(int argc, char** argv) {
             if (!warpDisplay)
                 cvPolyLine(out, &p, &count, 1, 1, CV_RGB(255,0,0), 2, CV_AA, 0);
         }
-
-        //processBalls(img, grayscale, out);
-
-        // Force objects[2] to hold the goal
-        CvPoint goal_pt = getGoal();
-        objects[2].x = goal_pt.x;
-        objects[2].y = goal_pt.y;
-
-/*
-        float radius_coords = FOOT * 1.68 * .5 / 12.; // golf ball
-        CvPoint2D32f pt[2] = {cvPoint2D32f(0, 0), cvPoint2D32f(radius_coords, 0)};
-        pt[0] = project(invProjection, pt[0]);
-        pt[1] = project(invProjection, pt[1]);
-        float dx = pt[1].x - pt[0].x;
-        float dy = pt[1].y - pt[0].y;
-        float radius_raw = sqrt(dx*dx+dy*dy);
-        if (hough_votes == 0)
-            hough_votes = 1;
-        float param2 = hough_votes*radius_raw/100.0;
-        if (param2== 0)
-            canny_threshold = 1;
-
-        CvSeq *circles = cvHoughCircles(grayscale, storage, CV_HOUGH_GRADIENT, 2, grayscale->height/4, canny_threshold, hough_votes, 7,7);
-
-        processCircles(img, out, circles);
-*/
 
         cvResetImageROI( out );
 
@@ -1594,7 +1443,7 @@ int main(int argc, char** argv) {
         }
         if (now - lastPosUpdate > 1.0 || matchState == MATCH_RUNNING || 1) {
             pthread_mutex_lock( &serial_lock);
-            memcpy(serialObjects, objects, sizeof(serialObjects));
+            memcpy(&serialGameData, &gameData, sizeof(game_data));
             sendPositionPacket = 1;
             pthread_mutex_unlock( &serial_lock);
 

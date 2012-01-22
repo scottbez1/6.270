@@ -4,11 +4,9 @@
 #include "packet.h"
 
 int serial_open(const char *device);
-void serial_close();
+void serial_close(int fd);
 
-void serial_sync();
-void serial_send_packet(packet_buffer* packet);
-
-void serial_send_str(char* msg, int num_bytes);
+void serial_sync(int fd);
+void serial_send_packet(int fd, packet_buffer* packet);
 
 #endif

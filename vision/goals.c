@@ -6,6 +6,10 @@ static int score = 0;
 
 static CvPoint goal;
 
+void pickNewGoal();
+
+
+
 void reseedRandom(int seed){
     goal = cvPoint(X_MIN, Y_MIN);
     srand(seed);

@@ -6,5 +6,6 @@
 void checkGoals(int x, int y);
 CvPoint getGoal();
 void resetRound(int randomSeed);
+int getScore();
 
 #endif

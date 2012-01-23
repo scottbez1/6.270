@@ -676,6 +676,8 @@ void centeredFitTitleText(IplImage *out, CvScalar color, float y, float w, char 
     CvSize textSize;
     int baseline;
 
+    if (buf == 0 || strlen(buf) == 0) return;
+
     int i;
     for (i=0; i<4; i++) {
         cvGetTextSize(buf, &titleFonts[i], &textSize, &baseline);
@@ -805,6 +807,10 @@ void processSquares( IplImage *img, IplImage *out, IplImage *grayscale, CvSeq *s
 
         if (!readPattern(img, pt, bit_pt_true, &id)) continue;
 
+        // Kind of a hack - white squares get detected as Team 29, so
+        // let's just disallow Team 29 from being recognized
+        if (id == 29) continue;
+
         getCenterFromBits(bit_pt_true, &trueCenter);
 
         if (0)
@@ -884,6 +890,7 @@ void *runPlayingFieldSerial(void *params) {
             int scoreB;
             int owners[6];
             int balls_remaining[6];
+            int rate_limit[6];
             /*
             strbuf[0] = 'D';
             strbuf[1] = 'A';
@@ -894,7 +901,7 @@ void *runPlayingFieldSerial(void *params) {
             strbuf[6] = '5';
             */
             int val = sscanf(strbuf, 
-                             "DATA:%u,%u;%u,%u;%d,%d,%d,%d,%d,%d,;%u,%u,%u,%u,%u,%u,",
+                             "DATA:%u,%u;%u,%u;%d,%d,%d,%d,%d,%d,;%u,%u,%u,%u,%u,%u,;%u,%u,%u,%u,%u,%u;",
                              &teamA,
                              &teamB,
                              &scoreA,
@@ -910,7 +917,13 @@ void *runPlayingFieldSerial(void *params) {
                              &balls_remaining[2],
                              &balls_remaining[3],
                              &balls_remaining[4],
-                             &balls_remaining[5]
+                             &balls_remaining[5],
+                             &rate_limit[0],
+                             &rate_limit[1],
+                             &rate_limit[2],
+                             &rate_limit[3],
+                             &rate_limit[4],
+                             &rate_limit[5]
                              );
                 printf("GOT: %s", strbuf);
             if (val > 0) {
@@ -925,6 +938,7 @@ void *runPlayingFieldSerial(void *params) {
                 for (int i = 0; i < 6; i++) {
                     gameData.territories[i].owner = owners[i];
                     gameData.territories[i].remaining = balls_remaining[i];
+                    gameData.territories[i].rate_limit = rate_limit[i];
                 }
             } else {
             }

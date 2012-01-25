@@ -29,8 +29,11 @@ int r_theta[] = new int[2];
 int r_score[] = new int[2];
 
 
+boolean ser_data_toggle = false;
+
+
 void setup() {
-  size(800,600);
+  size(600,600);
   background(0);
   
   for (int i = 0; i < 6; i++) {
@@ -81,8 +84,21 @@ void dispose() {
   }
 }
 
+void roundEnd() {
+  non_round_mode = MODE_PULSE;
+  round_running = false;
+    
+  for (int i = 0; i < 6; i++) {
+    owner[i] = 0;
+    capture_time[i] = 0;
+    balls_remaining[i] = 5;
+    mine_time[i] = 0;
+  }
+}
+
 void serialEvent(Serial p) {
   String inString = (p.readString());
+  ser_data_toggle = !ser_data_toggle;
   if (inString.startsWith("\nRound start")) {
     round_running = true;
     if (r_x[0] < 0 && r_x[1] > 0) {
@@ -101,15 +117,7 @@ void serialEvent(Serial p) {
     
     println("Red team: " + red_team + "\tBlue team: " + blue_team);
   } else if (inString.startsWith("\nRound end")) { 
-    non_round_mode = MODE_TERRITORIES;
-    round_running = false;
-    
-    for (int i = 0; i < 6; i++) {
-      owner[i] = 0;
-      capture_time[i] = 0;
-      balls_remaining[i] = 5;
-      mine_time[i] = 0;
-    }
+    roundEnd();
     
   } else if (inString.startsWith("\nROBOT")) {
     inString = inString.replace("\nROBOT:", "");
@@ -141,7 +149,7 @@ void serialEvent(Serial p) {
 
 
 static final int HEX_RADIUS = 300;
-static final int HEX_CENTER_X = 400;
+static final int HEX_CENTER_X = 300;
 static final int HEX_CENTER_Y = 300;
 
 static final int INNER_HEX_RADIUS = HEX_RADIUS / 4;
@@ -298,12 +306,18 @@ void draw() {
   
   drawRobots();
   drawScoreboard();
+
+  if (ser_data_toggle) {
+    fill(0,255,0);
+    noStroke();
+    ellipse(7, height-7, 10,10);
+  }
   
   animate();
-  
   updateLeds();
   
-  delay(5);
+  
+  delay(10);
 }
 
 
@@ -314,7 +328,6 @@ int scaleColor(int c) {
 
 
 void updateLeds() {
-  /*
   ledCtrl.write(170);
   ledCtrl.write(1);
   
@@ -362,7 +375,6 @@ void updateLeds() {
   ledCtrl.write(0);
   ledCtrl.write(0);
   ledCtrl.write(0);
-  */
 }
 
 
@@ -422,5 +434,13 @@ void animate() {
 void mousePressed() {
   if(!round_running) {
     non_round_mode = (non_round_mode + 1) % (LAST_MODE+1);
+  }
+}
+
+void keyPressed() {
+  if (key == '!') {
+    println("foo");
+    roundEnd();
+    non_round_mode = MODE_RAINBOW;
   }
 }

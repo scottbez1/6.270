@@ -12,6 +12,9 @@ long capture_time[] = new long[6];
 int balls_remaining[] = new int[6];
 long mine_time[] = new long[6];
 
+long round_start_time = 0;
+long round_end_time = 0;
+
 static final int MODE_TERRITORIES = 0;
 static final int MODE_RAINBOW = 1;
 static final int MODE_PULSE = 2;
@@ -84,23 +87,7 @@ void dispose() {
   }
 }
 
-void roundEnd() {
-  non_round_mode = MODE_PULSE;
-  round_running = false;
-    
-  for (int i = 0; i < 6; i++) {
-    owner[i] = 0;
-    capture_time[i] = 0;
-    balls_remaining[i] = 5;
-    mine_time[i] = 0;
-  }
-}
-
-void serialEvent(Serial p) {
-  String inString = (p.readString());
-  ser_data_toggle = !ser_data_toggle;
-  if (inString.startsWith("\nRound start")) {
-    round_running = true;
+void roundStart() {
     if (r_x[0] < 0 && r_x[1] > 0) {
       red_team = r_id[0];
       blue_team = r_id[1];
@@ -113,9 +100,35 @@ void serialEvent(Serial p) {
       owner[i] = 0;
       capture_time[i] = 0;
       balls_remaining[i] = 0;
+      mine_time[i] = 0;
     }
     
+    round_running = true;
+    round_start_time = millis();
+    
     println("Red team: " + red_team + "\tBlue team: " + blue_team);
+}
+
+
+void roundEnd() {
+  non_round_mode = MODE_PULSE;
+  round_running = false;
+    
+  for (int i = 0; i < 6; i++) {
+    owner[i] = 0;
+    capture_time[i] = 0;
+    balls_remaining[i] = 5;
+    mine_time[i] = 0;
+  }
+  
+  round_end_time = millis();
+}
+
+void serialEvent(Serial p) {
+  String inString = (p.readString());
+  ser_data_toggle = !ser_data_toggle;
+  if (inString.startsWith("\nRound start")) {
+    roundStart();
   } else if (inString.startsWith("\nRound end")) { 
     roundEnd();
     
@@ -382,7 +395,7 @@ void updateLeds() {
 
 public color anim_rainbow(int i, int frame) {
   colorMode(HSB, 360, 1, 1);
-  color ret = color((millis()/30 + i*60) % 360, 1, 1);
+  color ret = color((millis()/10 + i*60) % 360, 1, 1);
   colorMode(RGB, 255,255,255);
   return ret;
 }
@@ -398,7 +411,9 @@ void animate() {
       } else {
         lightbox[i] = color(0,0,0);
       }
-      
+    } 
+    
+    if (round_running) {
       // blink yellow if just captured
       if (millis() - capture_time[i] < 500) {
         int yellow = int( sin((millis() - capture_time[i])*2*PI/100)*255);
@@ -410,20 +425,60 @@ void animate() {
         int white = color(x,x,x);
         lightbox[i] = blendColor(lightbox[i], white, ADD); 
       }
+      
+      if (millis() - round_start_time < 800) {
+        int x = int(800 - (millis() - round_start_time));
+        int g = color(0,x,0);
+        lightbox[i] = blendColor(lightbox[i], g, ADD); 
+      }
+      
     } else {
+      float dist_a = sqrt(r_x[0]*r_x[0] + r_y[0]*r_y[0]);
+      float dist_b = sqrt(r_x[1]*r_x[1] + r_y[1]*r_y[1]);
+      
+      if (non_round_mode != MODE_TERRITORIES) {
+        if ( (r_id[0] != 170 || r_id[1] != 170)) {
+          non_round_mode = MODE_PULSE;
+        } else {
+          non_round_mode = MODE_RAINBOW;
+        }
+      }
+      
+      
+      int r = 0;
+      int g = 0;
+      int b = 0;
+          
       switch (non_round_mode) {
         case MODE_RAINBOW:
-          lightbox[i] = anim_rainbow(i, frame);
+          color c = anim_rainbow(i, frame);
+          r = (int)red(c);
+          g = (int)green(c);
+          b = (int)blue(c);
           break;
         case MODE_PULSE:
-          int v = int( sin(millis()*2*PI/3000)*100) + 155;
-          lightbox[0] = color(0,0,v);
-          lightbox[1] = color(0);
-          lightbox[2] = color(0);
-          lightbox[3] = color(v,0,0);
-          lightbox[4] = color(0);
-          lightbox[5] = color(0);
+          int v = int( sin(millis()*2*PI/2000)*150) + 105;
+          if (i == 0) {
+            b = v;
+          }
+          if (i == 3) {
+            r = v;
+          }
           break;
+      }
+      
+      final float a = 0.8;
+      float newRed = red(lightbox[i]) * a + r * (1-a);
+      float newGreen = green(lightbox[i]) * a + g * (1-a);
+      float newBlue = blue(lightbox[i]) * a + b * (1-a);
+      
+      lightbox[i] = color(newRed, newGreen, newBlue);
+      
+      
+      // blink yellow if just ended
+      if (millis() - round_end_time < 1000) {
+        int yellow = int( sin((millis() - round_end_time)*2*PI/160)*255);
+        lightbox[i] = color(yellow,yellow,0);
       }
     }
   }
@@ -433,7 +488,11 @@ void animate() {
 
 void mousePressed() {
   if(!round_running) {
-    non_round_mode = (non_round_mode + 1) % (LAST_MODE+1);
+    if (non_round_mode == MODE_TERRITORIES) {
+      non_round_mode = MODE_RAINBOW;
+    } else {
+      non_round_mode = MODE_TERRITORIES;
+    }
   }
 }
 

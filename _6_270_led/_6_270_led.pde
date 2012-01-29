@@ -330,12 +330,12 @@ void draw() {
   updateLeds();
   
   
-  delay(10);
+  delay(1);
 }
 
 
 int scaleColor(int c) {
-  int ret = int(c*0.5);
+  int ret = int(c*0.3);
   return ret == 170 ? 171 : ret;
 }
 
@@ -373,9 +373,11 @@ void updateLeds() {
   ledCtrl.write(scaleColor(int(green(lightbox[3]))));
   ledCtrl.write(scaleColor(int(blue(lightbox[3]))));
   
-  ledCtrl.write(0);
-  ledCtrl.write(0);
-  ledCtrl.write(0);
+  
+  ledCtrl.write(scaleColor(int(red(lightbox[4]))));
+  ledCtrl.write(scaleColor(int(green(lightbox[4]))));
+  ledCtrl.write(scaleColor(int(blue(lightbox[4]))));
+  
   
   ledCtrl.write(scaleColor(int(red(lightbox[5]))));
   ledCtrl.write(scaleColor(int(green(lightbox[5]))));
@@ -437,7 +439,7 @@ void animate() {
       float dist_b = sqrt(r_x[1]*r_x[1] + r_y[1]*r_y[1]);
       
       if (non_round_mode != MODE_TERRITORIES) {
-        if ( (r_id[0] != 170 || r_id[1] != 170)) {
+        if ( (r_id[0] != 170) || (r_id[1] != 170)) {
           non_round_mode = MODE_PULSE;
         } else {
           non_round_mode = MODE_RAINBOW;

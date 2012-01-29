@@ -3,7 +3,6 @@
 #include <strings.h>
 #include <stdlib.h>
 #include <stdbool.h>
-#include "goals.h"
 
 double matchStartTime;
 int matchState = MATCH_ENDED;
@@ -689,12 +688,14 @@ void centeredFitTitleText(IplImage *out, CvScalar color, float y, float w, char 
     cvPutText(out, buf, cvPoint((displayHeight+displayWidth-textSize.width)/2.0, y+textSize.height/2.0), &titleFonts[i], color);
 }
 
-void drawGoalInfo(IplImage *out) {
-    CvPoint goal = getGoal();
-    CvPoint2D32f display_goal = project(displayMatrix, cvPoint2D32f(goal.x,goal.y));
-    cvCircle(out, cvPoint(display_goal.x, display_goal.y), 10, CV_RGB(0,0,255), 5, CV_AA,0);
-    
-    cvPrintf(out, &titleFonts[1], cvPoint(800, 350), CV_RGB(255,255,255), "Score: %d", getScore());
+
+void drawHexCorners(IplImage *out) {
+    for (int ang = 0; ang < 360; ang += 60) {
+        float rad = ang * M_PI / 180;
+        CvPoint corner = cvPoint(2047*cos(rad),2047*sin(rad));
+        CvPoint2D32f display_corner = project(displayMatrix, cvPoint2D32f(corner.x,corner.y));
+        cvCircle(out, cvPoint(display_corner.x, display_corner.y), 10, CV_RGB(0,0,255), 5, CV_AA,0);
+    }
 }
 
 void updateHUD(IplImage *out) {
@@ -733,8 +734,8 @@ void updateHUD(IplImage *out) {
 
       
 
-        drawGoalInfo(out);
             
+        drawHexCorners(out);
 
 
         float s = MATCH_LEN_SECONDS - (now - matchStartTime);

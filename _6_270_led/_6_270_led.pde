@@ -1,16 +1,22 @@
 import processing.serial.*;
+import fullscreen.*;
 
+FullScreen fs; 
 
 Serial rfmon;
 Serial ledCtrl;
+Serial drainCounter;
 
 PFont myFont;
+PFont largeFont;
 
 int owner[] = new int[6];
 long capture_time[] = new long[6];
 
 int balls_remaining[] = new int[6];
 long mine_time[] = new long[6];
+
+int rate_limit[] = new int[6];
 
 long round_start_time = 0;
 long round_end_time = 0;
@@ -36,8 +42,13 @@ boolean ser_data_toggle = false;
 
 
 void setup() {
-  size(600,600);
+  size(800,600);
   background(0);
+    // Create the fullscreen object
+  fs = new FullScreen(this); 
+  
+  // enter fullscreen mode
+  //fs.enter(); 
   
   for (int i = 0; i < 6; i++) {
     owner[i] = 0;
@@ -52,8 +63,10 @@ void setup() {
   
   ledCtrl = new Serial(this, "/dev/tty.usbserial-A6007x5c", 38400, 'E', 8, 1);
   
+  drainCounter = new Serial(this,"/dev/tty.usbserial-A800cBaZ",19200);
+  
   myFont = createFont("FFScala", 32);
-  textFont(myFont);
+  largeFont = createFont("FFScala", 50);
   textAlign(CENTER);
 }
 
@@ -156,13 +169,15 @@ void serialEvent(Serial p) {
       mine_time[i] = millis();
     }
     balls_remaining[i] = int(parts[2]);
+    
+    rate_limit[i] = int(parts[3]);
   }
 }
 
 
 
-static final int HEX_RADIUS = 300;
-static final int HEX_CENTER_X = 300;
+static final int HEX_RADIUS = 200;
+static final int HEX_CENTER_X = 400;
 static final int HEX_CENTER_Y = 300;
 
 static final int INNER_HEX_RADIUS = HEX_RADIUS / 4;
@@ -283,6 +298,8 @@ void drawRobots() {
              
     fill(255);
     textAlign(CENTER);
+    
+    textFont(myFont);
     text("Team " + r_id[i], ax, ay+60);
   }
 }
@@ -295,19 +312,65 @@ void drawScoreboard() {
     int x;
     if (r_id[i] == red_team) {
       textAlign(LEFT);
-      x = 10;
+      x = 40;
       fill(200,50,50);
     } else if (r_id[i] == blue_team) {
       textAlign(RIGHT);
-      x = width - 10;
+      x = width - 40;
       fill(50,50,200);
     } else {
       return;
     }
     
+    textFont(largeFont);
     text("Team " + r_id[i], x, 50);
     fill(255);
-    text(str(r_score[i]), x, 90);
+    text(str(r_score[i]), x, 107);
+  }
+}
+void drawTimeRemaining() {
+  if (round_running) {
+    fill(255);
+    stroke(255);
+    long secs = 120 - (millis() - round_start_time)/1000;
+    
+    textAlign(CENTER);
+    textFont(myFont);
+    text(nf(int(secs/60),1) + ":" + nf(int(secs%60),2), width/2, height/2 + 15);
+  }
+}
+
+void drawBalls() {
+  //TODO actually draw them
+  for (int i = 0; i < 6; i++) {
+    float rad = i * PI/3;
+    
+    int x = int(HEX_CENTER_X + HEX_RADIUS*cos(rad - PI/12));
+    int y = int( HEX_CENTER_Y - HEX_RADIUS*sin(rad - PI/12));
+    
+    fill(255);
+    stroke(255);
+    
+    for (int ball = 0; ball < balls_remaining[i]; ball++) {
+      int x_ball = x;
+      if (i == 0 || i == 1 || i == 5) {
+        x_ball += ball * 20;
+      } else {
+        x_ball -= ball * 20;
+      }
+      ellipse(x_ball , y , 11, 11);
+    }
+    
+    if (balls_remaining[i] == 0) {
+      // draw time wedge/arc to show rate limit
+      stroke(255);
+      strokeWeight(2);
+      noFill();
+      ellipse(x, y, 40, 40);
+      noStroke();
+      fill(255);
+      arc(x, y, 40, 40, -PI/2 - rate_limit[i] * 2 * PI / 60, -PI/2);
+    }
   }
 }
 
@@ -317,8 +380,11 @@ void draw() {
   drawInnerHexAndTerritories();
   drawLightboxes();
   
+  drawBalls();
+  
   drawRobots();
   drawScoreboard();
+  drawTimeRemaining();
 
   if (ser_data_toggle) {
     fill(0,255,0);
@@ -330,12 +396,12 @@ void draw() {
   updateLeds();
   
   
-  delay(10);
+  delay(1);
 }
 
 
 int scaleColor(int c) {
-  int ret = int(c*0.5);
+  int ret = int(c*0.3);
   return ret == 170 ? 171 : ret;
 }
 
@@ -373,9 +439,11 @@ void updateLeds() {
   ledCtrl.write(scaleColor(int(green(lightbox[3]))));
   ledCtrl.write(scaleColor(int(blue(lightbox[3]))));
   
-  ledCtrl.write(0);
-  ledCtrl.write(0);
-  ledCtrl.write(0);
+  
+  ledCtrl.write(scaleColor(int(red(lightbox[4]))));
+  ledCtrl.write(scaleColor(int(green(lightbox[4]))));
+  ledCtrl.write(scaleColor(int(blue(lightbox[4]))));
+  
   
   ledCtrl.write(scaleColor(int(red(lightbox[5]))));
   ledCtrl.write(scaleColor(int(green(lightbox[5]))));
@@ -388,6 +456,7 @@ void updateLeds() {
   ledCtrl.write(0);
   ledCtrl.write(0);
   ledCtrl.write(0);
+  
 }
 
 
@@ -437,7 +506,7 @@ void animate() {
       float dist_b = sqrt(r_x[1]*r_x[1] + r_y[1]*r_y[1]);
       
       if (non_round_mode != MODE_TERRITORIES) {
-        if ( (r_id[0] != 170 || r_id[1] != 170)) {
+        if ( (r_id[0] != 170) || (r_id[1] != 170)) {
           non_round_mode = MODE_PULSE;
         } else {
           non_round_mode = MODE_RAINBOW;

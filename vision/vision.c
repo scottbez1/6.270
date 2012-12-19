@@ -28,10 +28,13 @@ float bounds[4] = {-1024, 1024, -1773, 1773};
 
 #define SHOW_FILTERED_OUTPUT 1
 
+#define ZOOM_SIZE 400
+
 const char *WND_MAIN = "6.270 Vision System";
 const char *WND_FILTERED = "Filtered Video";
 const char *WND_CONTROLS = "Controls";
 const char *WND_FILTERED_SQUARES = "Square Detection";
+const char *WND_ZOOM = "Magnifier";
 const char *TRK_THRESHOLD = "Threshold";
 const char *TRK_TOLERANCE = "Side length tolerance";
 const char *TRK_MIN_AREA = "Min square area";
@@ -49,6 +52,8 @@ enum {
     PICK_EXCLUDE_CORNERS
 } mouseOperation = PICK_PROJECTION_CORNERS;
 int nextMousePoint = 4;
+int cur_mouse_x = 0;
+int cur_mouse_y = 0;
 
 const char *mouseCornerLabel[] = {"TOP LEFT", "TOP RIGHT", "BOTTOM RIGHT", "BOTTOM LEFT"};
 const char *mouseOperationLabel[] = {"Init Projection", "Sample Colors", "Exclude Quad"};
@@ -136,6 +141,8 @@ void saveExclusions() {
 }
 
 void mouseHandler(int event, int x, int y, int flags, void *param) {
+    cur_mouse_x = x;
+    cur_mouse_y = y;
     CvPoint2D32f point = cvPoint2D32f(x,y);
     if (event == CV_EVENT_LBUTTONDOWN && nextMousePoint < 4) {
         CvPoint2D32f *arr;
@@ -708,6 +715,57 @@ void updateHUD(IplImage *out) {
     last_fps = fps;
 
     if (!warpDisplay) {
+
+        // magnify the image underneath the mouse
+        IplImage *zoom = cvCreateImage(cvSize(out->width*2,out->height*2), 8, 3);
+        CvPoint2D32f srcTri[3], dstTri[3];
+        CvMat* warp_mat = cvCreateMat(2,3,CV_32FC1);
+        srcTri[0].x = 0;
+        srcTri[0].y = 0;
+        srcTri[1].x = 1;
+        srcTri[1].y = 0;
+        srcTri[2].x = 0;
+        srcTri[2].y = 1;
+        dstTri[0].x = 0;
+        dstTri[0].y = 0;
+        dstTri[1].x = 2;
+        dstTri[1].y = 0;
+        dstTri[2].x = 0;
+        dstTri[2].y = 2;
+
+        cvGetAffineTransform(srcTri, dstTri, warp_mat);
+
+        cvWarpAffine(out, zoom, warp_mat, CV_WARP_FILL_OUTLIERS, CV_RGB(0,0,0));
+
+        IplImage *zoom_patch = cvCreateImage(cvSize(ZOOM_SIZE, ZOOM_SIZE), 8, 3);
+        cvGetRectSubPix(zoom, zoom_patch, cvPoint2D32f(cur_mouse_x*2, cur_mouse_y*2));
+
+        cvSet2D(zoom_patch, ZOOM_SIZE/2, ZOOM_SIZE/2 - 5, CV_RGB(255,0,0));
+        cvSet2D(zoom_patch, ZOOM_SIZE/2, ZOOM_SIZE/2 - 6, CV_RGB(255,0,0));
+        cvSet2D(zoom_patch, ZOOM_SIZE/2, ZOOM_SIZE/2 - 7, CV_RGB(255,0,0));
+        cvSet2D(zoom_patch, ZOOM_SIZE/2, ZOOM_SIZE/2 - 8, CV_RGB(255,0,0));
+
+        cvSet2D(zoom_patch, ZOOM_SIZE/2, ZOOM_SIZE/2 + 5, CV_RGB(255,0,0));
+        cvSet2D(zoom_patch, ZOOM_SIZE/2, ZOOM_SIZE/2 + 6, CV_RGB(255,0,0));
+        cvSet2D(zoom_patch, ZOOM_SIZE/2, ZOOM_SIZE/2 + 7, CV_RGB(255,0,0));
+        cvSet2D(zoom_patch, ZOOM_SIZE/2, ZOOM_SIZE/2 + 8, CV_RGB(255,0,0));
+
+        cvSet2D(zoom_patch, ZOOM_SIZE/2 - 5, ZOOM_SIZE/2, CV_RGB(255,0,0));
+        cvSet2D(zoom_patch, ZOOM_SIZE/2 - 6, ZOOM_SIZE/2, CV_RGB(255,0,0));
+        cvSet2D(zoom_patch, ZOOM_SIZE/2 - 7, ZOOM_SIZE/2, CV_RGB(255,0,0));
+        cvSet2D(zoom_patch, ZOOM_SIZE/2 - 8, ZOOM_SIZE/2, CV_RGB(255,0,0));
+        
+        cvSet2D(zoom_patch, ZOOM_SIZE/2 + 5, ZOOM_SIZE/2, CV_RGB(255,0,0));
+        cvSet2D(zoom_patch, ZOOM_SIZE/2 + 6, ZOOM_SIZE/2, CV_RGB(255,0,0));
+        cvSet2D(zoom_patch, ZOOM_SIZE/2 + 7, ZOOM_SIZE/2, CV_RGB(255,0,0));
+        cvSet2D(zoom_patch, ZOOM_SIZE/2 + 8, ZOOM_SIZE/2, CV_RGB(255,0,0));
+        
+        cvShowImage(WND_ZOOM, zoom_patch);
+        cvReleaseImage(&zoom_patch);
+        cvReleaseImage(&zoom);
+
+
+
         if (nextMousePoint!=4)
             cvPrintf(out, &hudFont, cvPoint(2, 20), CV_RGB(255,0,0), "%s: Click the %s corner", mouseOperationLabel[mouseOperation], mouseCornerLabel[nextMousePoint]);
         if (projection && !warpDisplay) {
@@ -1134,6 +1192,12 @@ int handleKeypresses() {
     } else if ( c == 'p' ){
         warpDisplay = !warpDisplay;
         computeDisplayMatrix();
+        if (warpDisplay) {
+            cvDestroyWindow( WND_ZOOM);
+        } else {
+            cvNamedWindow( WND_ZOOM, 0);
+            cvResizeWindow( WND_ZOOM, ZOOM_SIZE, ZOOM_SIZE);
+        }
     } else if ( c == 'e' ){
         // exclude
         mouseOperation = PICK_EXCLUDE_CORNERS;
